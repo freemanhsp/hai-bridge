@@ -99,6 +99,30 @@ SSH 退出被归类为认证、指纹、配置、转发冲突或转发拒绝时�
 
 重连只修复传输，不重放已发送的模型请求；在途生成会失败，由调用方决定是否重新发起。Ctrl-C 主动停止不会触发自动重连。
 
+## 运行状态与排障提示
+
+默认日志在 SSH 退出或重试耗尽后输出 Next 建议，分别说明认证、主机信任、端口/转发、配置与网络问题；不会打印原始 stderr、token 或私钥内容。远端反向转发失败可能是端口占用，也可能是服务端拒绝，提示会要求核对两者，而不自动放宽权限。
+
+需要脚本读取状态时：
+
+~~~sh
+node bin/hai-bridge.mjs publish --json
+node bin/hai-bridge.mjs connect --client-config .local/relay-mock.json --json
+~~~
+
+这是逐行 JSON 事件（NDJSON），不同于 doctor 的单份 JSON 报告。每条事件包括 event=ssh、state、direction、loopback_port 和 attempt；退出事件附带 exit_code/reason，最终失败附带 hint，重试等待附带 retry/max_retries/delay_ms。
+
+| state | 实际含义 |
+| --- | --- |
+| starting | 开始一次 SSH 启动尝试，不代表已经连通 |
+| exited | 本次 SSH 非零退出，附带安全归类原因 |
+| retry_wait | 正在有限退避等待，不重放请求 |
+| stopped | 主动停止或 SSH 正常退出；隧道不再运行 |
+| failed | 不符合重试条件或无法启动 SSH |
+| retry_exhausted | 连续连接故障的重试预算耗尽 |
+
+不会输出 connected/ready，也不推断进程存活就是健康。配置加载等启动前错误仍输出到 stderr，不产生 SSH 事件。此功能不是后台 status 接口，不维护 PID 文件，也不接管已有手工 SSH。
+
 ## 真实配置入口（待授权后使用）
 
 只在确认真实 HAI 经该 ECS 路径获准后，使用已有私密配对文件代替 `--mock`：

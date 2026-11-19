@@ -15,10 +15,10 @@ const HELP = `HAI Bridge MVP — Node.js 22+
   init-server  [--server-config PATH] [--upstream-url URL] [--upstream-auth-file PATH]
   pair         --ssh-target USER@MAC [--out PATH] [--local-port PORT] [--model MODEL]
   serve        [--server-config PATH]
-  connect      [--client-config PATH]
+  connect      [--client-config PATH] [--json]
   init-publisher --ssh-target USER@ECS [--identity-file PATH] [--known-hosts-file PATH]
                  [--publisher-config PATH] [--ssh-port PORT] [--relay-port PORT]
-  publish      [--publisher-config PATH]
+  publish      [--publisher-config PATH] [--json]
   init-relay-client --relay-target USER@ECS --mac-user USER --relay-identity-file PATH
                     --identity-file PATH (--mock | --pairing-file PATH) [--out PATH]
                     [--known-hosts-file PATH] [--ssh-port PORT] [--relay-port PORT] [--local-port PORT]
@@ -61,7 +61,8 @@ async function main() {
   const clientFile = values['client-config'] || DEFAULT_CLIENT_CONFIG;
   const publisherFile = values['publisher-config'] || DEFAULT_PUBLISHER_CONFIG;
   if (values.offline && command !== 'doctor') throw new Error('--offline is only supported by doctor');
-  if (values.json && command !== 'doctor') throw new Error('--json is only supported by doctor');
+  if (values.json && !['doctor', 'publish', 'connect'].includes(command)) throw new Error('--json is only supported by doctor, publish and connect');
+  const tunnelOptions = values.json ? { logger: () => {}, onEvent: event => console.log(JSON.stringify(event)) } : undefined;
   if (command === 'doctor' && values.offline) {
     if ((values['client-config'] && values['publisher-config']) || values['server-config'] || values['base-url'] || values.infer) {
       throw new Error('Offline doctor accepts either client or publisher config, without --base-url, --server-config or --infer');
@@ -82,7 +83,7 @@ async function main() {
     return;
   }
   if (command === 'publish') {
-    process.exitCode = await runTunnel(await loadPublisherConfig(publisherFile));
+    process.exitCode = await runTunnel(await loadPublisherConfig(publisherFile), tunnelOptions);
     return;
   }
   if (command === 'init-relay-client') {
@@ -142,7 +143,7 @@ async function main() {
   if (!['connect', 'doctor', 'probe', 'codex'].includes(command)) throw new Error(`Unknown command: ${command}`);
   const config = await loadClientConfig(clientFile);
   const origin = clientOrigin(config, values['base-url']);
-  if (command === 'connect') { process.exitCode = await runTunnel(config); return; }
+  if (command === 'connect') { process.exitCode = await runTunnel(config, tunnelOptions); return; }
   if (command === 'doctor' || (command === 'probe' && !values.infer)) {
     console.log(JSON.stringify(await diagnose(config, origin), null, 2)); return;
   }

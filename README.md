@@ -80,6 +80,8 @@ node bin/hai-bridge.mjs doctor --offline --publisher-config .local/publisher.jso
 
 两条分别用于 B 和 Mac，不需要一起运行。加 --json 可输出结构化报告；不登录 SSH、不调用 HAI、不修改信任或读取私钥内容。它会短暂检查 B 本地端口绑定，端口已占用只显示警告。详见 [离线自检](docs/offline-checks.md)。
 
+publish/connect 失败时提供 Next 排障提示；加 --json 可输出逐行安全状态事件。starting 只表示启动尝试，不表示就绪；实际连通仍以在线 doctor 为准。
+
 ```sh
 npm test
 node bin/hai-bridge.mjs probe

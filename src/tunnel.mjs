@@ -40,19 +40,38 @@ export function classifySshFailure(stderr = '', code = 255) {
   return code === 255 ? 'connection_failed' : 'ssh_exit';
 }
 
-export async function runTunnel(config, { logger = console.log, executable = 'ssh', spawnProcess = spawn,
+export function sshFailureHint(reason) {
+  const hints = {
+    host_key: 'Verify the expected fingerprint through a trusted channel and check known_hosts/HostKeyAlias. Do not disable verification or remove entries just to connect.',
+    authentication: 'Check the authorized public key, identity path/permissions and SSH agent for each hop. Confirm BatchMode public-key login separately; never share private keys.',
+    forward_conflict: 'Check the local/relay port for an old tunnel, and check remote forwarding policy. Stop only your own obsolete tunnel; no other listener is killed automatically.',
+    forward_denied: 'Confirm the permitted forwarding direction and PermitOpen/PermitListen with the administrator. Do not loosen VPN or security policies to reconnect.',
+    configuration: 'Check the dedicated SSH profile syntax, file access and supported OpenSSH options; global SSH config is not repaired automatically.',
+    connection_failed: 'Check network reachability and whether publisher/connect are still running. Restoring transport does not replay model requests.',
+    spawn_error: 'Install OpenSSH Client and confirm ssh -V works in this terminal.',
+    ssh_exit: 'Review this SSH exit manually; only connection failures qualify for automatic retry.',
+  };
+  return hints[reason] || hints.ssh_exit;
+}
+
+export async function runTunnel(config, { logger = console.log, onEvent, executable = 'ssh', spawnProcess = spawn,
   signals = process, pause = (ms, signal) => wait(ms, undefined, { signal }), now = () => performance.now() } = {}) {
   const args = sshArguments(config);
   const maxRetries = config.maxRetries ?? 5;
   if (!Number.isInteger(maxRetries) || maxRetries < 0 || maxRetries > 100) throw new Error('Invalid maxRetries');
   const controller = new AbortController();
-  let child, retries = 0;
-  const stop = () => { controller.abort(); child?.kill('SIGTERM'); };
+  let child, retries = 0, attempt = 0;
+  const direction = config.direction === 'remote' ? 'publish' : 'connect';
+  const emit = (state, details = {}) => onEvent?.({ event: 'ssh', state, direction,
+    loopback_port: config.localPort, attempt, ...details });
+  const stopped = () => { emit('stopped', { reason: 'user_stop', exit_code: 0 }); logger('SSH stopped'); return 0; };
+  const stop = () => { if (controller.signal.aborted) return; controller.abort(); child?.kill('SIGTERM'); };
   signals.once('SIGINT', stop);
   signals.once('SIGTERM', stop);
   try {
     while (!controller.signal.aborted) {
-      const direction = config.direction === 'remote' ? 'publish' : 'connect';
+      attempt++;
+      emit('starting');
       logger('Starting SSH ' + direction + ': ' + config.target + ' (loopback port ' + config.localPort + ')');
       const started = now();
       const result = await new Promise(resolve => {
@@ -69,21 +88,38 @@ export async function runTunnel(config, { logger = console.log, executable = 'ss
         });
       });
       child = undefined;
-      if (controller.signal.aborted) { logger('SSH stopped'); return 0; }
-      if (result.code === 0) return 0;
-      logger('SSH exited (' + result.code + '): ' + result.reason);
-      if (result.reason === 'spawn_error') throw new Error('Cannot start SSH; install the OpenSSH client and check PATH');
-      if (!config.reconnect || result.reason !== 'connection_failed') return result.code;
+      if (controller.signal.aborted) return stopped();
+      if (result.code === 0) {
+        emit('stopped', { reason: 'ssh_exit', exit_code: 0 });
+        logger('SSH exited cleanly; the tunnel is no longer running');
+        return 0;
+      }
+      if (result.reason !== 'spawn_error') {
+        emit('exited', { exit_code: result.code, reason: result.reason });
+        logger('SSH exited (' + result.code + '): ' + result.reason);
+      } else logger('Cannot start SSH: spawn_error');
+      const fail = state => {
+        const hint = sshFailureHint(result.reason);
+        emit(state, { exit_code: result.code, reason: result.reason, hint });
+        logger('Next: ' + hint);
+        return result.code;
+      };
+      if (result.reason === 'spawn_error') {
+        fail('failed');
+        throw new Error('Cannot start SSH; install the OpenSSH client and check PATH');
+      }
+      if (!config.reconnect || result.reason !== 'connection_failed') return fail('failed');
       // Reset only after a sustained process lifetime, not every brief reconnect.
       if (now() - started >= 30000) retries = 0;
-      if (retries >= maxRetries) { logger('SSH retry budget exhausted'); return result.code; }
+      if (retries >= maxRetries) { logger('SSH retry budget exhausted'); return fail('retry_exhausted'); }
       const delay = Math.min(15000, 1000 * 2 ** retries);
       retries++;
+      emit('retry_wait', { retry: retries, max_retries: maxRetries, delay_ms: delay, requests_replayed: false });
       logger('Reconnect ' + retries + '/' + maxRetries + ' in ' + delay / 1000 + 's (requests are not replayed)');
       try { await pause(delay, controller.signal); }
       catch (error) { if (!controller.signal.aborted) throw error; }
     }
-    return 0;
+    return stopped();
   } finally {
     signals.removeListener('SIGINT', stop);
     signals.removeListener('SIGTERM', stop);

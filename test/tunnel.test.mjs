@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { sshArguments, runTunnel, classifySshFailure } from '../src/tunnel.mjs';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { sshArguments, runTunnel, classifySshFailure, sshFailureHint } from '../src/tunnel.mjs';
 
 test('SSH forwards only loopback and keeps default host-key verification', () => {
   const args = sshArguments({ localPort: 16655, remoteHost: '127.0.0.1', remotePort: 16656, target: 'user@mac.local' });
@@ -127,4 +132,65 @@ test('spawn failure is safe and nonzero exits without reconnect terminate immedi
   const success = harness([{ code: 0 }]);
   assert.equal(await runTunnel(CONFIG, success.dependencies), 0);
   assert.deepEqual(success.delays, []);
+});
+
+test('structured transport events describe attempts and retry waits without claiming readiness', async () => {
+  const h = harness([{}, { code: 0 }]), events = [];
+  assert.equal(await runTunnel(CONFIG, { ...h.dependencies, onEvent: event => events.push(event) }), 0);
+  assert.deepEqual(events.map(event => event.state), ['starting', 'exited', 'retry_wait', 'starting', 'stopped']);
+  assert.equal(events[2].delay_ms, 1000);
+  assert.equal(events[2].retry, 1);
+  assert.equal(events[2].requests_replayed, false);
+  assert.equal(events[3].attempt, 2);
+  assert.ok(events.every(event => event.event === 'ssh' && event.direction === 'connect'));
+  assert.equal(events.some(event => ['connected', 'ready'].includes(event.state)), false);
+});
+
+test('fatal and exhausted events expose safe reasons and actionable hints, never stderr', async () => {
+  for (const scenario of [{ stderr: 'Permission denied (publickey). SECRET-STDERR' }, { stderr: 'Connection refused SECRET-STDERR' }]) {
+    const h = harness([scenario]), events = [];
+    assert.equal(await runTunnel({ ...CONFIG, maxRetries: 0 }, { ...h.dependencies, onEvent: event => events.push(event) }), 255);
+    const final = events.at(-1);
+    assert.equal(final.state, scenario.stderr.startsWith('Permission') ? 'failed' : 'retry_exhausted');
+    assert.ok(final.hint.length > 20);
+    assert.equal((JSON.stringify(events) + h.logs.join('\n')).includes('SECRET-STDERR'), false);
+  }
+  for (const reason of ['host_key', 'authentication', 'forward_conflict', 'forward_denied', 'configuration', 'connection_failed', 'spawn_error', 'ssh_exit']) {
+    assert.ok(sshFailureHint(reason).length > 20);
+  }
+  const h = harness([]), events = [];
+  await assert.rejects(runTunnel(CONFIG, { ...h.dependencies, onEvent: event => events.push(event),
+    spawnProcess: () => { throw new Error('SECRET-SPAWN-ERROR'); } }), /Cannot start SSH/);
+  assert.deepEqual(events.map(event => event.state), ['starting', 'failed']);
+  assert.equal(JSON.stringify(events).includes('SECRET-SPAWN-ERROR'), false);
+});
+
+test('cancellation emits exactly one stopped event and never schedules another attempt', async () => {
+  const h = harness([{}]), events = [];
+  h.dependencies.pause = async () => { h.signals.emit('SIGTERM'); throw new Error('aborted'); };
+  assert.equal(await runTunnel(CONFIG, { ...h.dependencies, onEvent: event => events.push(event) }), 0);
+  assert.deepEqual(events.map(event => event.state), ['starting', 'exited', 'retry_wait', 'stopped']);
+  assert.equal(events.at(-1).reason, 'user_stop');
+  assert.equal(h.children.length, 1);
+});
+
+test('CLI JSON mode emits only safe events using a local SSH stub, not a real connection', { skip: process.platform === 'win32' }, async t => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hai-json-ssh-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  await fs.writeFile(path.join(dir, 'ssh'), '#!/usr/bin/env node\nprocess.stderr.write("Permission denied (publickey). SECRET-STUB-STDERR");\nprocess.exit(255);\n', { mode: 0o700 });
+  const file = path.join(dir, 'publisher.json');
+  await fs.writeFile(file, JSON.stringify({ ssh_target: 'publisher@relay.example.invalid', relay_port: 18083,
+    reconnect: true, max_retries: 0 }), { mode: 0o600 });
+  const execute = promisify(execFile);
+  await assert.rejects(execute(process.execPath, [path.resolve('bin/hai-bridge.mjs'), 'publish', '--publisher-config', file, '--json'], {
+    env: { ...process.env, PATH: dir + path.delimiter + process.env.PATH },
+  }), error => {
+    assert.equal(error.code, 255);
+    const events = error.stdout.trim().split('\n').map(line => JSON.parse(line));
+    assert.deepEqual(events.map(event => event.state), ['starting', 'exited', 'failed']);
+    assert.equal(events.at(-1).reason, 'authentication');
+    assert.equal(error.stderr, '');
+    assert.equal(error.stdout.includes('SECRET-STUB-STDERR'), false);
+    return true;
+  });
 });

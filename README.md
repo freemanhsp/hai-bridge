@@ -13,7 +13,7 @@ HAI key 和公司登录凭证留在 A。B 的配对文件只有独立的桥接 t
 源码工作区运行 npm run pack 可生成本地 .tgz 包和 SHA-256，方便将同一份代码交付其他设备。没有发布到 npm；安装包不含 .local、mydocs、explore 或凭证。
 
 ~~~sh
-npm install --global --offline --ignore-scripts --no-audit --no-fund ./hai-bridge-0.1.0.tgz
+npm install --global --offline --ignore-scripts --no-audit --no-fund ./hai-bridge-0.2.0.tgz
 hai-bridge --version
 hai-bridge dev --port 0
 ~~~
@@ -80,6 +80,8 @@ WSL 中使用 WSL 自己的 Node.js、SSH 和 Codex；直接在 WSL 中建立隧
 当前先用 `--mock` 验证：B 18084→Mac 18080，内层 SSH 经 ECS 18083 终止于 Mac。真实 HAI 经个人 ECS 的具体授权尚未确认。新命令的本机测试及 Mac publisher 已通过，Windows/WSL 封装端到端与实际自动恢复仍待验证；旧手工 Windows 模拟链路的 11 PASS 不替代这轮验收。
 
 完整初始化、启动和迁移说明见 [中继 CLI](docs/relay-cli.md)，下一轮集中验收及后续阶段见 [推进计划](docs/roadmap.md)。
+
+0.2.0 增加 Windows/WSL 共用的 B 端批量生命周期入口。它自己启动测试内层 SSH，显式选 --interrupt-ssh 后只中断自有子进程并检查自动恢复，不需手工查 PID/重启；报告保存到新的 --out 文件。仅接受 --mock 配置，Mac publisher/历史模拟服务需预先运行。见 [集中检查](docs/lifecycle-checks.md)，不要同时另开同端口 connect。
 
 ## 纯本机开发
 

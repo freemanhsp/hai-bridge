@@ -1,6 +1,6 @@
 {
   "name": "hai-bridge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Cross-device access to an existing local HAI proxy through an authenticated bridge and SSH tunnel.",
@@ -11,7 +11,7 @@
     "bridge": "node bin/hai-bridge.mjs",
     "dev": "node bin/hai-bridge.mjs dev",
     "pack": "node scripts/pack.mjs",
-    "test": "node --test test/bridge.test.mjs test/config.test.mjs test/tunnel.test.mjs test/relay-config.test.mjs test/client.test.mjs test/preflight.test.mjs test/dev.test.mjs test/package.test.mjs",
+    "test": "node --test test/bridge.test.mjs test/config.test.mjs test/tunnel.test.mjs test/relay-config.test.mjs test/client.test.mjs test/preflight.test.mjs test/dev.test.mjs test/package.test.mjs test/lifecycle.test.mjs",
     "check": "node --check bin/hai-bridge.mjs"
   }
 }

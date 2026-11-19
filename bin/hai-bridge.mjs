@@ -11,6 +11,7 @@ import { clientOrigin, diagnose, probeInference, runCodex } from '../src/client.
 import { diagnoseOffline, formatOfflineReport } from '../src/preflight.mjs';
 import { runDevelopment } from '../src/dev.mjs';
 import { PACKAGE_NAME, VERSION, versionInfo } from '../src/version.mjs';
+import { runLifecycleChecks } from '../src/lifecycle.mjs';
 
 const HELP = `HAI Bridge MVP — Node.js 22+
 
@@ -28,6 +29,7 @@ const HELP = `HAI Bridge MVP — Node.js 22+
   doctor       [--client-config PATH] [--base-url URL]
   doctor       --offline [--client-config PATH | --publisher-config PATH] [--json]
   dev          [--port PORT] [--out PATH] [--json]
+  check-lifecycle --client-config PATH --out PATH [--interrupt-ssh] [--json]
   probe        [--client-config PATH] [--base-url URL] [--infer] [--model MODEL]
   codex        [--client-config PATH] [--base-url URL] -- [CODEX ARGS...]
 
@@ -39,6 +41,7 @@ publish/connect run in foreground; Ctrl-C stops only their own SSH child.
 Credentials are not printed. 'probe --infer' is billable with a real upstream; dev is synthetic.
 Offline doctor never connects to SSH/HAI or changes trust; it briefly checks local port binding.
 dev starts only local mock services (default port 18090); config is temporary unless --out is set.
+check-lifecycle is MOCK ONLY and owns its SSH; --interrupt-ssh intentionally stops that child to test recovery.
 `;
 
 async function main() {
@@ -55,6 +58,7 @@ async function main() {
   const { values, positionals } = parseArgs({ args: options, allowPositionals: true, options: {
     help: { type: 'boolean', short: 'h' }, infer: { type: 'boolean' }, mock: { type: 'boolean' },
     offline: { type: 'boolean' }, json: { type: 'boolean' }, port: { type: 'string' },
+    'interrupt-ssh': { type: 'boolean' },
     'server-config': { type: 'string' }, 'client-config': { type: 'string' },
     'upstream-url': { type: 'string' }, 'upstream-auth-file': { type: 'string' },
     'ssh-target': { type: 'string' }, 'local-port': { type: 'string' },
@@ -73,8 +77,20 @@ async function main() {
   const publisherFile = values['publisher-config'] || DEFAULT_PUBLISHER_CONFIG;
   if (values.offline && command !== 'doctor') throw new Error('--offline is only supported by doctor');
   if (values.port !== undefined && command !== 'dev') throw new Error('--port is only supported by dev');
-  if (values.json && !['doctor', 'publish', 'connect', 'dev'].includes(command)) throw new Error('--json is only supported by doctor, publish, connect and dev');
+  if (values['interrupt-ssh'] && command !== 'check-lifecycle') throw new Error('--interrupt-ssh is only supported by check-lifecycle');
+  if (values.json && !['doctor', 'publish', 'connect', 'dev', 'check-lifecycle'].includes(command)) throw new Error('--json is not supported by this command');
   const tunnelOptions = values.json ? { logger: () => {}, onEvent: event => console.log(JSON.stringify(event)) } : undefined;
+  if (command === 'check-lifecycle') {
+    if (!values['client-config'] || !values.out || userArgs.length
+      || Object.keys(values).some(key => !['client-config', 'out', 'interrupt-ssh', 'json'].includes(key))) {
+      throw new Error('check-lifecycle requires --client-config and --out; accepts only --interrupt-ssh and --json additionally');
+    }
+    const result = await runLifecycleChecks({ clientFile, out: values.out, interruptSsh: values['interrupt-ssh'] });
+    console.log(values.json ? JSON.stringify({ event: 'check_summary', status: result.report.status, report_file: result.destination })
+      : 'MOCK lifecycle: ' + result.report.status + '; report: ' + result.destination);
+    process.exitCode = result.report.status === 'fail' ? 1 : 0;
+    return;
+  }
   if (command === 'dev') {
     if (Object.keys(values).some(key => !['port', 'out', 'json', 'help'].includes(key)) || userArgs.length) {
       throw new Error('dev accepts only --port, --out and --json; real HAI/client/server/SSH options are not accepted');

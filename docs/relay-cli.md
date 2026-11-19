@@ -138,3 +138,5 @@ node bin/hai-bridge.mjs init-relay-client --pairing-file .local/paired.json --re
 本机配置生成、SSH 参数与失败分类/退避/取消有自动化覆盖；Mac 新 `publish` 的真实 SSH 反向发布与 Ctrl-C 清理已实测。旧手工 Windows 链路的模拟脚本有用户报告 11 PASS。**新封装的 Windows/WSL 全链路及实际自动断线恢复尚未验证**，不能继承旧手工链路结论。
 
 下一轮集中验证见 [推进计划](roadmap.md)。
+
+0.2.0 的 B 端 check-lifecycle 可替代手动注入内层 SSH 中断，自己管理本次专用隧道并保存逐项报告；不会管理 Mac publisher 或旧 connect。准备与命令见 [生命周期集中检查](lifecycle-checks.md)。跨设备实际结果仍待取得。

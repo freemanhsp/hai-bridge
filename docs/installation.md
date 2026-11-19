@@ -1,6 +1,6 @@
 # 本地安装与版本交付
 
-首个可安装版本 hai-bridge 0.1.0，需要 Node.js 22+ 和 npm；真实中转另需 OpenSSH。没有第三方 npm 依赖，不捆绑 Node.js。package.json 保留 private=true，本流程不发布 npm、不上传 GitHub，也不复制 HAI/SSH/桥接凭证。
+当前可安装版本 hai-bridge 0.2.0，需要 Node.js 22+ 和 npm；真实中转另需 OpenSSH。没有第三方 npm 依赖，不捆绑 Node.js。package.json 保留 private=true，本流程不发布 npm、不上传 GitHub，也不复制 HAI/SSH/桥接凭证。
 
 ## 源码工作区打包
 
@@ -10,9 +10,9 @@ npm run check
 npm run pack
 ~~~
 
-pack 离线运行 npm，禁用生命周期脚本。每次在 .local/artifacts/hai-bridge-0.1.0-随机后缀/ 创建新目录，不覆盖旧产物，输出 archive 路径和 sha256。只交付下列三个文件，不交付整个工作区：
+pack 离线运行 npm，禁用生命周期脚本。每次在 .local/artifacts/hai-bridge-0.2.0-随机后缀/ 创建新目录，不覆盖旧产物，输出 archive 路径和 sha256。只交付下列三个文件，不交付整个工作区：
 
-- hai-bridge-0.1.0.tgz：可安装包。
+- hai-bridge-0.2.0.tgz：可安装包。
 - SHA256SUMS：安装包 SHA-256。
 - release.json：版本、Node.js 要求、SHA-256、文件清单；能查询 Git 时另记录 git_commit 和 git_dirty。
 
@@ -28,7 +28,7 @@ Mac / WSL，在三个文件所在目录：
 
 ~~~sh
 shasum -a 256 -c SHA256SUMS
-npm install --global --offline --ignore-scripts --no-audit --no-fund ./hai-bridge-0.1.0.tgz
+npm install --global --offline --ignore-scripts --no-audit --no-fund ./hai-bridge-0.2.0.tgz
 hai-bridge --version
 hai-bridge version --json
 ~~~
@@ -36,9 +36,9 @@ hai-bridge version --json
 WSL 若无 shasum，可用 sha256sum -c SHA256SUMS。Windows PowerShell，在文件所在目录：
 
 ~~~powershell
-Get-FileHash .\hai-bridge-0.1.0.tgz -Algorithm SHA256
+Get-FileHash .\hai-bridge-0.2.0.tgz -Algorithm SHA256
 Get-Content .\SHA256SUMS
-npm.cmd install --global --offline --ignore-scripts --no-audit --no-fund .\hai-bridge-0.1.0.tgz
+npm.cmd install --global --offline --ignore-scripts --no-audit --no-fund .\hai-bridge-0.2.0.tgz
 hai-bridge.cmd --version
 hai-bridge.cmd version --json
 ~~~

@@ -25,11 +25,29 @@ node bin/hai-bridge.mjs init-server --upstream-auth-file /path/to/auth.json
 
 ## B 配置
 
-`.local/client.json` 包含桥接 token、SSH target、两端转发端口、模型和有限重连配置。`identity_file` 为可选 SSH 私钥路径，相对 client 配置所在目录解析。私钥内容不会由本工具读取或传输。
+`.local/client.json` 包含桥接 token、SSH target、两端转发端口、模型和有限重连配置。私钥内容不会由本工具读取或传输。
 
-`max_retries` 默认 5，重连等待为 1、2、4、8、15 秒。主机指纹不匹配或认证失败也可能表现为 SSH 退出；用普通 SSH 命令先排障，不要关闭主机指纹校验。
+| 可选 SSH 字段 | 含义 |
+| --- | --- |
+| `identity_file` | 本机私钥路径，配合 `IdentitiesOnly=yes` 使用 |
+| `ssh_config_file` | 独立 SSH profile，传给 SSH 的 `-F` |
+| `known_hosts_file` | 已核对的主机信任文件；设置后不读取全局 known_hosts |
+| `ssh_host_key_alias` | 主机密钥校验别名，如 `hai-bridge-mac` |
+| `ssh_port` | SSH 目标入口端口，非模型 HTTP 端口 |
+
+路径支持 `~/`，相对路径以 client 配置所在目录解析。无 `ssh_config_file` 的旧直连 client 仍读取已有 SSH aliases。ECS 模式由 [中继初始化命令](relay-cli.md)生成独立 profile，分别设置跳板与 Mac 的密钥、端口及信任；只有一个顶层 `identity_file` 不能代替两个身份。
+
+`max_retries` 初始化为 5，连接故障的重连等待为 1、2、4、8、15 秒；SSH 进程存活 30 秒后重置连续失败预算，不代表 HTTP 健康。SSH 退出被分类为认证、主机指纹、配置或转发错误时停止；用普通 SSH 命令先排障，不要关闭主机指纹校验。Ctrl-C 主动退出不重连，连接恢复不重放模型请求。
 
 不同 SSH 端口、VPN 路径或跳板机通过用户已有的 SSH config 配置，以 host 别名作为 `ssh_target`。
+
+## Mac publisher 配置
+
+`init-publisher` 生成 `.local/publisher.json`，与 server/client 配置独立：`ssh_target` 必须是非 root 的 `user@host`，`ssh_port` 默认为 22，`relay_port` 默认为 ECS loopback 18083；`reconnect` 为 true，`max_retries` 为 5。可选 SSH 字段及路径解析规则同上。
+
+`publish` 只允许 ECS loopback→Mac loopback SSH 22，不能发布 HAI HTTP 6655。未指定独立 profile 时使用空 SSH config，避免继承全局额外转发；公钥/agent 和已核对的 known_hosts 仍需提前准备。初始化文件在 Unix 上以 0600 创建，Windows 还应确认目录/文件 ACL 仅允许预期用户访问。
+
+## AI 工具入口
 
 Windows 原生 Codex 启动入口先查找 `codex.exe` 或 npm 的 `@openai/codex/bin/codex.js`，不通过 `.cmd` 拼接命令。如果安装路径特殊，设置 `HAI_CODEX_EXECUTABLE` 为原生可执行文件或该 JS 入口的绝对路径。
 

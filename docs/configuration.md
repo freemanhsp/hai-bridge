@@ -49,6 +49,8 @@ node bin/hai-bridge.mjs init-server --upstream-auth-file /path/to/auth.json
 
 ## AI 工具入口
 
+dev 生成的 client 使用 local_only=true，connect 会拒绝这类配置，doctor/probe 可直接请求本机模拟服务；它不是跨设备配对。该可选字段必须为 boolean，不设置时维持原有 SSH 行为。详见 [本机开发](development.md)。
+
 Windows 原生 Codex 启动入口先查找 `codex.exe` 或 npm 的 `@openai/codex/bin/codex.js`，不通过 `.cmd` 拼接命令。如果安装路径特殊，设置 `HAI_CODEX_EXECUTABLE` 为原生可执行文件或该 JS 入口的绝对路径。
 
 启动器自动加入 `--no-daemon`，避免已有共享 daemon 使用其他会话的环境。已验证 Codex 0.163.0；若旧版本不支持此参数，请升级后使用本入口。exec 的 provider 覆盖参数放在子命令之后，以确保在 `--ignore-user-config` 等模式下仍然生效。

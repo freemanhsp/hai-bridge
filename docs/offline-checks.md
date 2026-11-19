@@ -18,6 +18,8 @@ node bin/hai-bridge.mjs doctor --offline --publisher-config .local/publisher.jso
 
 ## 检查范围
 
+dev 生成的 local_only=true 配置不需要 SSH，相关可执行文件和主机信任项直接跳过；服务正在运行时本地端口占用仍是正常警告。
+
 - Node.js 22+ 与 OpenSSH 是否可用。
 - JSON 可读性、字段/端口/loopback/token 格式；内容及 token 不显示。
 - 显式私钥路径是否是可读普通文件；只检查元数据，不读取私钥内容，也不证明密钥有效或公钥已授权。

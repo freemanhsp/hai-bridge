@@ -9,6 +9,7 @@ import { initializePublisher, loadPublisherConfig, initializeRelayClient,
   DEFAULT_PUBLISHER_CONFIG } from '../src/relay-config.mjs';
 import { clientOrigin, diagnose, probeInference, runCodex } from '../src/client.mjs';
 import { diagnoseOffline, formatOfflineReport } from '../src/preflight.mjs';
+import { runDevelopment } from '../src/dev.mjs';
 
 const HELP = `HAI Bridge MVP — Node.js 22+
 
@@ -24,6 +25,7 @@ const HELP = `HAI Bridge MVP — Node.js 22+
                     [--known-hosts-file PATH] [--ssh-port PORT] [--relay-port PORT] [--local-port PORT]
   doctor       [--client-config PATH] [--base-url URL]
   doctor       --offline [--client-config PATH | --publisher-config PATH] [--json]
+  dev          [--port PORT] [--out PATH] [--json]
   probe        [--client-config PATH] [--base-url URL] [--infer] [--model MODEL]
   codex        [--client-config PATH] [--base-url URL] -- [CODEX ARGS...]
 
@@ -31,8 +33,9 @@ Default server config: .local/server.json
 Default client config: .local/client.json
 Default publisher config: .local/publisher.json
 publish/connect run in foreground; Ctrl-C stops only their own SSH child.
-Credentials are not printed. 'probe --infer' makes one small, billable model request.
+Credentials are not printed. 'probe --infer' is billable with a real upstream; dev is synthetic.
 Offline doctor never connects to SSH/HAI or changes trust; it briefly checks local port binding.
+dev starts only local mock services (default port 18090); config is temporary unless --out is set.
 `;
 
 async function main() {
@@ -43,7 +46,7 @@ async function main() {
   const options = separator === -1 ? raw : raw.slice(0, separator);
   const { values, positionals } = parseArgs({ args: options, allowPositionals: true, options: {
     help: { type: 'boolean', short: 'h' }, infer: { type: 'boolean' }, mock: { type: 'boolean' },
-    offline: { type: 'boolean' }, json: { type: 'boolean' },
+    offline: { type: 'boolean' }, json: { type: 'boolean' }, port: { type: 'string' },
     'server-config': { type: 'string' }, 'client-config': { type: 'string' },
     'upstream-url': { type: 'string' }, 'upstream-auth-file': { type: 'string' },
     'ssh-target': { type: 'string' }, 'local-port': { type: 'string' },
@@ -61,8 +64,16 @@ async function main() {
   const clientFile = values['client-config'] || DEFAULT_CLIENT_CONFIG;
   const publisherFile = values['publisher-config'] || DEFAULT_PUBLISHER_CONFIG;
   if (values.offline && command !== 'doctor') throw new Error('--offline is only supported by doctor');
-  if (values.json && !['doctor', 'publish', 'connect'].includes(command)) throw new Error('--json is only supported by doctor, publish and connect');
+  if (values.port !== undefined && command !== 'dev') throw new Error('--port is only supported by dev');
+  if (values.json && !['doctor', 'publish', 'connect', 'dev'].includes(command)) throw new Error('--json is only supported by doctor, publish, connect and dev');
   const tunnelOptions = values.json ? { logger: () => {}, onEvent: event => console.log(JSON.stringify(event)) } : undefined;
+  if (command === 'dev') {
+    if (Object.keys(values).some(key => !['port', 'out', 'json', 'help'].includes(key)) || userArgs.length) {
+      throw new Error('dev accepts only --port, --out and --json; real HAI/client/server/SSH options are not accepted');
+    }
+    process.exitCode = await runDevelopment({ port: values.port === undefined ? undefined : Number(values.port), out: values.out }, { json: values.json });
+    return;
+  }
   if (command === 'doctor' && values.offline) {
     if ((values['client-config'] && values['publisher-config']) || values['server-config'] || values['base-url'] || values.infer) {
       throw new Error('Offline doctor accepts either client or publisher config, without --base-url, --server-config or --infer');
@@ -143,7 +154,10 @@ async function main() {
   if (!['connect', 'doctor', 'probe', 'codex'].includes(command)) throw new Error(`Unknown command: ${command}`);
   const config = await loadClientConfig(clientFile);
   const origin = clientOrigin(config, values['base-url']);
-  if (command === 'connect') { process.exitCode = await runTunnel(config, tunnelOptions); return; }
+  if (command === 'connect') {
+    if (config.localOnly) throw new Error('Local-only dev configuration does not use SSH; run doctor or probe directly');
+    process.exitCode = await runTunnel(config, tunnelOptions); return;
+  }
   if (command === 'doctor' || (command === 'probe' && !values.infer)) {
     console.log(JSON.stringify(await diagnose(config, origin), null, 2)); return;
   }

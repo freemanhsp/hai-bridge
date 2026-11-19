@@ -69,6 +69,16 @@ WSL 中使用 WSL 自己的 Node.js、SSH 和 Codex；直接在 WSL 中建立隧
 
 完整初始化、启动和迁移说明见 [中继 CLI](docs/relay-cli.md)，下一轮集中验收及后续阶段见 [推进计划](docs/roadmap.md)。
 
+## 纯本机开发
+
+不需要 SSH 或 HAI 登录，一条命令启动实际 bridge 与模拟上游：
+
+~~~sh
+npm run dev
+~~~
+
+默认端口 18090；启动输出会提供临时配置及可复制的 doctor/probe 命令。Ctrl-C 关闭自有服务并清理临时配置；不会修改现有配对文件或历史实验。端口冲突可用 npm run dev -- --port 0。详见 [本机开发说明](docs/development.md)。
+
 ## 验证与更多说明
 
 暂时不方便连接另一台设备时，可以先运行本机自检：
@@ -88,7 +98,7 @@ node bin/hai-bridge.mjs probe
 node bin/hai-bridge.mjs probe --infer
 ```
 
-`probe` 只读取健康状态和模型列表；`probe --infer` 会发送一个极短、计费的流式生成请求，默认使用 `gpt-6-luna`。
+`probe` 只读取健康状态和模型列表；`probe --infer` 会发送一个极短的流式生成请求，默认使用 `gpt-6-luna`。连接真实上游时会计费；连接本机 `dev` 环境时返回合成输出，不产生模型费用。
 
 - [架构与边界](docs/architecture.md)
 - [配置与排障](docs/configuration.md)

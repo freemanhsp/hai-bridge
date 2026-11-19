@@ -55,6 +55,7 @@ export async function initializeRelayClient(file, options = {}) {
   if (!options.mock && !options.pairingFile) throw new Error('Use --mock or provide --pairing-file');
   const paired = options.mock ? { token: MOCK_RELAY_TOKEN, localPort: 18084, remoteHost: '127.0.0.1', remotePort: 18080, model: 'relay-ok' }
     : await loadClientConfig(options.pairingFile, {});
+  if (paired.localOnly) throw new Error('Local-only development configs are not cross-device pairings; use --mock for relay experiments');
   const output = path.resolve(file), profile = output + '.ssh_config';
   const localPort = validatePort(options.localPort ?? paired.localPort, 'local_port');
   const relayPort = validatePort(options.relayPort ?? 18083, 'relay_port');

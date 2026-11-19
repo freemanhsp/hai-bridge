@@ -3,6 +3,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { validatePort, validateSshTarget, sshValue } from './config.mjs';
 
 export function sshArguments(config) {
+  if (config.localOnly) throw new Error('Local-only development configuration cannot establish SSH forwarding');
   const localPort = validatePort(config.localPort, 'local port');
   const remotePort = validatePort(config.remotePort, 'remote port');
   const direction = config.direction ?? 'local';

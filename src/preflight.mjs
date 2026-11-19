@@ -66,13 +66,6 @@ export async function diagnoseOffline({ file, role = 'client' }, { files = fs, r
   const nodeAvailable = Number(nodeVersion.split('.')[0]) >= 22;
   add('node', nodeAvailable ? 'pass' : 'fail', nodeAvailable ? 'Node.js 22+ is available.' : 'Node.js is older than 22.',
     nodeAvailable ? undefined : 'Use Node.js 22 or newer.');
-  let sshAvailable = false;
-  try {
-    const result = await command('ssh', ['-V']);
-    sshAvailable = /OpenSSH_/.test((result.stdout || '') + (result.stderr || ''));
-  } catch {}
-  add('ssh', sshAvailable ? 'pass' : 'fail', sshAvailable ? 'OpenSSH client is available.' : 'Cannot run the OpenSSH client.',
-    sshAvailable ? undefined : 'Install OpenSSH Client and confirm ssh -V works in this terminal.');
 
   async function inspectFile(filename, id, { required = true, sensitive = false, key = false } = {}) {
     let stat;
@@ -112,6 +105,16 @@ export async function diagnoseOffline({ file, role = 'client' }, { files = fs, r
     return report();
   }
   add('config.format', 'pass', 'Configuration passed validation.');
+  if (config.localOnly) add('ssh', 'skip', 'Local-only development configuration does not require SSH.');
+  else {
+    let sshAvailable = false;
+    try {
+      const result = await command('ssh', ['-V']);
+      sshAvailable = /OpenSSH_/.test((result.stdout || '') + (result.stderr || ''));
+    } catch {}
+    add('ssh', sshAvailable ? 'pass' : 'fail', sshAvailable ? 'OpenSSH client is available.' : 'Cannot run the OpenSSH client.',
+      sshAvailable ? undefined : 'Install OpenSSH Client and confirm ssh -V works in this terminal.');
+  }
   if (role === 'client' && env.HAI_BRIDGE_TOKEN) add('config.token_override', 'warn', 'HAI_BRIDGE_TOKEN overrides the client token.',
     'Confirm the override is intentional; its value is never displayed.');
 
@@ -125,6 +128,11 @@ export async function diagnoseOffline({ file, role = 'client' }, { files = fs, r
           : 'Check local binding permissions; no remote port was probed.');
     }
   } else add('remote_port', 'skip', 'Publisher relay port is on ECS and cannot be checked offline.');
+
+  if (config.localOnly) {
+    add('ssh.profile_static', 'skip', 'Local-only development configuration does not use SSH identities or host trust.');
+    return report();
+  }
 
   if (config.identityFile) await inspectFile(config.identityFile, 'ssh.identity', { sensitive: true, key: true });
 

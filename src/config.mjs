@@ -161,6 +161,7 @@ export async function exportClient(serverFile, outputFile, options) {
 export async function loadClientConfig(file = DEFAULT_CLIENT_CONFIG, env = process.env) {
   const configFile = path.resolve(file);
   const raw = await readJson(configFile);
+  if (raw.local_only !== undefined && typeof raw.local_only !== 'boolean') throw new Error('local_only must be a boolean');
   if (!['127.0.0.1', '::1'].includes(raw.remote_host)) throw new Error('Remote destination must be loopback');
   if (typeof raw.model !== 'string' || !/^[A-Za-z0-9_.-]+$/.test(raw.model)) throw new Error('Invalid model');
   if (!Number.isInteger(raw.max_retries) || raw.max_retries < 0 || raw.max_retries > 100) {
@@ -170,7 +171,7 @@ export async function loadClientConfig(file = DEFAULT_CLIENT_CONFIG, env = proce
     token: validateToken(env.HAI_BRIDGE_TOKEN || raw.bridge_token), target: validateSshTarget(raw.ssh_target),
     localPort: validatePort(raw.local_port, 'local_port'), remoteHost: raw.remote_host,
     remotePort: validatePort(raw.remote_port, 'remote_port'), model: raw.model,
-    reconnect: raw.reconnect === true, maxRetries: raw.max_retries,
+    reconnect: raw.reconnect === true, maxRetries: raw.max_retries, localOnly: raw.local_only === true,
     ...sshOptions(raw, path.dirname(configFile)),
   };
 }

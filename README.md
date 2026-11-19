@@ -71,6 +71,15 @@ WSL 中使用 WSL 自己的 Node.js、SSH 和 Codex；直接在 WSL 中建立隧
 
 ## 验证与更多说明
 
+暂时不方便连接另一台设备时，可以先运行本机自检：
+
+~~~sh
+node bin/hai-bridge.mjs doctor --offline --client-config .local/relay-mock.json
+node bin/hai-bridge.mjs doctor --offline --publisher-config .local/publisher.json
+~~~
+
+两条分别用于 B 和 Mac，不需要一起运行。加 --json 可输出结构化报告；不登录 SSH、不调用 HAI、不修改信任或读取私钥内容。它会短暂检查 B 本地端口绑定，端口已占用只显示警告。详见 [离线自检](docs/offline-checks.md)。
+
 ```sh
 npm test
 node bin/hai-bridge.mjs probe

@@ -66,6 +66,8 @@ node bin/hai-bridge.mjs probe --base-url http://127.0.0.1:16656 --infer
 
 ## 排障
 
+可以先用 doctor --offline 检查本机配置、SSH 身份路径、简单独立 profile 与信任记录；不会连接 ECS/HAI 或修复配置。具体范围、警告及退出码见 [离线自检](offline-checks.md)。
+
 | 现象 | 检查 |
 | --- | --- |
 | `connect` 退出 | SSH 是否可达、公钥是否授权、主机指纹是否核对、端口是否占用 |

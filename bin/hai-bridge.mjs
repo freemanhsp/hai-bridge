@@ -8,6 +8,7 @@ import { runTunnel } from '../src/tunnel.mjs';
 import { initializePublisher, loadPublisherConfig, initializeRelayClient,
   DEFAULT_PUBLISHER_CONFIG } from '../src/relay-config.mjs';
 import { clientOrigin, diagnose, probeInference, runCodex } from '../src/client.mjs';
+import { diagnoseOffline, formatOfflineReport } from '../src/preflight.mjs';
 
 const HELP = `HAI Bridge MVP — Node.js 22+
 
@@ -22,6 +23,7 @@ const HELP = `HAI Bridge MVP — Node.js 22+
                     --identity-file PATH (--mock | --pairing-file PATH) [--out PATH]
                     [--known-hosts-file PATH] [--ssh-port PORT] [--relay-port PORT] [--local-port PORT]
   doctor       [--client-config PATH] [--base-url URL]
+  doctor       --offline [--client-config PATH | --publisher-config PATH] [--json]
   probe        [--client-config PATH] [--base-url URL] [--infer] [--model MODEL]
   codex        [--client-config PATH] [--base-url URL] -- [CODEX ARGS...]
 
@@ -30,6 +32,7 @@ Default client config: .local/client.json
 Default publisher config: .local/publisher.json
 publish/connect run in foreground; Ctrl-C stops only their own SSH child.
 Credentials are not printed. 'probe --infer' makes one small, billable model request.
+Offline doctor never connects to SSH/HAI or changes trust; it briefly checks local port binding.
 `;
 
 async function main() {
@@ -40,6 +43,7 @@ async function main() {
   const options = separator === -1 ? raw : raw.slice(0, separator);
   const { values, positionals } = parseArgs({ args: options, allowPositionals: true, options: {
     help: { type: 'boolean', short: 'h' }, infer: { type: 'boolean' }, mock: { type: 'boolean' },
+    offline: { type: 'boolean' }, json: { type: 'boolean' },
     'server-config': { type: 'string' }, 'client-config': { type: 'string' },
     'upstream-url': { type: 'string' }, 'upstream-auth-file': { type: 'string' },
     'ssh-target': { type: 'string' }, 'local-port': { type: 'string' },
@@ -56,6 +60,18 @@ async function main() {
   const serverFile = values['server-config'] || DEFAULT_SERVER_CONFIG;
   const clientFile = values['client-config'] || DEFAULT_CLIENT_CONFIG;
   const publisherFile = values['publisher-config'] || DEFAULT_PUBLISHER_CONFIG;
+  if (values.offline && command !== 'doctor') throw new Error('--offline is only supported by doctor');
+  if (values.json && command !== 'doctor') throw new Error('--json is only supported by doctor');
+  if (command === 'doctor' && values.offline) {
+    if ((values['client-config'] && values['publisher-config']) || values['server-config'] || values['base-url'] || values.infer) {
+      throw new Error('Offline doctor accepts either client or publisher config, without --base-url, --server-config or --infer');
+    }
+    const role = values['publisher-config'] ? 'publisher' : 'client';
+    const report = await diagnoseOffline({ role, file: role === 'publisher' ? publisherFile : clientFile });
+    console.log(values.json ? JSON.stringify(report, null, 2) : formatOfflineReport(report));
+    process.exitCode = report.status === 'fail' ? 1 : 0;
+    return;
+  }
   if (command === 'init-publisher') {
     const file = await initializePublisher(publisherFile, {
       sshTarget: values['ssh-target'], identityFile: values['identity-file'], knownHostsFile: values['known-hosts-file'],

@@ -1,0 +1,79 @@
+# HAI Bridge MVP
+
+让 B 上的 AI 工具经 SSH 访问 A 上已经认证的 HAI 代理。当前目标是 Mac A + Windows 11 原生 / WSL B，先验证 Codex 的完整请求与流式返回。
+
+```text
+B 的 Codex → B:16655 → SSH → A:16656 桥接 → A:6655 HAI → 公司平台
+```
+
+HAI key 和公司登录凭证留在 A。B 的配对文件只有独立的桥接 token。运行需要 Node.js 22+，没有第三方 npm 依赖。
+
+## 工作区
+
+| 目录 | 用途 | Git |
+| --- | --- | --- |
+| `explore/` | 验证猜想的脚本、结果和历史资产 | 纳入 |
+| `docs/` | 正式架构、使用和验证文档 | 纳入 |
+| `mydocs/` | 开发过程笔记和临时文档 | 忽略 |
+| `.local/` | 本机配置、配对文件和 token | 忽略 |
+| `src/`、`bin/`、`test/` | MVP 实现、入口和测试 | 纳入 |
+
+## 在 A 上启动
+
+保持原来的 `hai proxy start` 运行。默认从当前用户的 `~/.codex/auth.json` 读取 `OPENAI_API_KEY`，不会导出其中的公司登录令牌。
+
+```sh
+node bin/hai-bridge.mjs init-server
+node bin/hai-bridge.mjs pair --ssh-target user@mac-host
+node bin/hai-bridge.mjs serve
+```
+
+将 `user@mac-host` 替换成 B 能通过 SSH 访问的 Mac 用户和地址，或 B 上的 SSH host 别名。将生成的 `.local/client.json` 通过获准的安全方式交给 B，放到 B 的项目目录中的同一路径。该文件包含桥接 token，应当保密。
+
+Mac 需要已经启用远程登录，并配置 B 的 SSH 公钥。先在 B 手工执行一次 `ssh user@mac-host`，核对主机指纹并确认登录成功。工具保留 SSH 的主机密钥校验，使用 SSH agent / 公钥认证，不支持交互式密码重连。
+
+## 在 B 上连接
+
+Windows PowerShell 和 WSL 使用相同命令。先确认 `node --version` 和 `ssh -V` 可用，并将项目及配对文件放到 B 上。
+
+终端一，保持隧道运行：
+
+```sh
+node bin/hai-bridge.mjs connect
+```
+
+终端二，先验证连接，再启动 Codex：
+
+```sh
+node bin/hai-bridge.mjs doctor
+node bin/hai-bridge.mjs codex --
+```
+
+启动非交互任务：
+
+```sh
+node bin/hai-bridge.mjs codex -- exec "解释当前项目的结构"
+```
+
+Codex 需提前安装，当前验证版本为 0.163.0，启动器需要其支持 `--no-daemon`。启动入口通过进程参数设置桥接 provider，并将桥接 token 放入子进程环境变量 `HAI_BRIDGE_TOKEN`；运行时自动使用 `--no-daemon`，使凭证留在本次调用的进程环境中。现有 Codex 配置与认证文件不会被改写。
+
+WSL 中使用 WSL 自己的 Node.js、SSH 和 Codex；直接在 WSL 中建立隧道即可，无需依赖 Windows / WSL 的 localhost 互通。如果两边同时运行，将其中一份 client 配置的 `local_port` 改成另一个端口，例如 16657。
+
+同一局域网使用可到达的 Mac 地址。异地使用获准的网络、VPN 或已有 SSH 跳板配置；工具本身不提供公网打洞。
+
+## 验证与更多说明
+
+```sh
+npm test
+node bin/hai-bridge.mjs probe
+node bin/hai-bridge.mjs probe --infer
+```
+
+`probe` 只读取健康状态和模型列表；`probe --infer` 会发送一个极短、计费的流式生成请求，默认使用 `gpt-6-luna`。
+
+- [架构与边界](docs/architecture.md)
+- [配置与排障](docs/configuration.md)
+- [验证记录](docs/validation.md)
+- [最初的可行性探索](explore/2026-11-19-forwarding/README.md)
+
+当前实现适用于本次已对齐范围内的 MVP 验证。逐用户身份认证、设备登记、图形界面和部署管理尚未实现；项目管理方式等待后续约定。

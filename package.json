@@ -1,0 +1,13 @@
+{
+  "name": "hai-bridge-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cross-device access to an existing local HAI proxy through an authenticated bridge and SSH tunnel.",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "bridge": "node bin/hai-bridge.mjs",
+    "test": "node --test test/bridge.test.mjs test/config.test.mjs test/tunnel.test.mjs",
+    "check": "node --check bin/hai-bridge.mjs"
+  }
+}

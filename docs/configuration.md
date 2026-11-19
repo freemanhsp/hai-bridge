@@ -1,0 +1,63 @@
+# 配置与排障
+
+## Mac 配置
+
+`init-server` 生成 `.local/server.json` 和 `.local/bridge.token`。初始化和配对均拒绝覆盖已有文件。需要改变设置时编辑生成的 JSON，或选择新的输出路径。
+
+| 字段 | 默认值 | 含义 |
+| --- | --- | --- |
+| `listen_host` | `127.0.0.1` | 桥接只支持 loopback 监听 |
+| `listen_port` | `16656` | A 上桥接端口 |
+| `upstream_url` | `http://127.0.0.1:6655` | 固定的本地 HAI origin |
+| `upstream_auth_file` | 当前用户的 `.codex/auth.json` | 读取 HAI `OPENAI_API_KEY` |
+| `bridge_token_file` | `bridge.token` | 相对于 server 配置文件解析 |
+| `idle_timeout_ms` | `120000` | 上游无活动超时，不是整段生成的总时限 |
+| `max_request_bytes` | `67108864` | 请求体上限，64 MiB |
+| `allowed_providers` | `["openai"]` | 允许的模型 provider |
+
+用其他认证文件初始化：
+
+```sh
+node bin/hai-bridge.mjs init-server --upstream-auth-file /path/to/auth.json
+```
+
+环境变量 `HAI_UPSTREAM_API_KEY` 可覆盖 A 的 HAI key 来源；`HAI_BRIDGE_TOKEN` 可覆盖桥接 token。不要把真实凭证写入命令行参数、正式文档或 Git。
+
+## B 配置
+
+`.local/client.json` 包含桥接 token、SSH target、两端转发端口、模型和有限重连配置。`identity_file` 为可选 SSH 私钥路径，相对 client 配置所在目录解析。私钥内容不会由本工具读取或传输。
+
+`max_retries` 默认 5，重连等待为 1、2、4、8、15 秒。主机指纹不匹配或认证失败也可能表现为 SSH 退出；用普通 SSH 命令先排障，不要关闭主机指纹校验。
+
+不同 SSH 端口、VPN 路径或跳板机通过用户已有的 SSH config 配置，以 host 别名作为 `ssh_target`。
+
+Windows 原生 Codex 启动入口先查找 `codex.exe` 或 npm 的 `@openai/codex/bin/codex.js`，不通过 `.cmd` 拼接命令。如果安装路径特殊，设置 `HAI_CODEX_EXECUTABLE` 为原生可执行文件或该 JS 入口的绝对路径。
+
+启动器自动加入 `--no-daemon`，避免已有共享 daemon 使用其他会话的环境。已验证 Codex 0.163.0；若旧版本不支持此参数，请升级后使用本入口。exec 的 provider 覆盖参数放在子命令之后，以确保在 `--ignore-user-config` 等模式下仍然生效。
+
+## Mac 上单机验证
+
+在 A 上运行桥接后，可用同一配对文件直接验证桥接，无需启动 SSH：
+
+```sh
+node bin/hai-bridge.mjs doctor --base-url http://127.0.0.1:16656
+node bin/hai-bridge.mjs probe --base-url http://127.0.0.1:16656 --infer
+```
+
+这只验证 A 上的桥接到 HAI 链路，不代替 B 的跨设备验证。
+
+## 排障
+
+| 现象 | 检查 |
+| --- | --- |
+| `connect` 退出 | SSH 是否可达、公钥是否授权、主机指纹是否核对、端口是否占用 |
+| `doctor` 无法连接 | `serve`、`connect` 是否仍运行，client 端口是否匹配 |
+| `bridge_unauthorized` / 401 | B 配对 token 是否与 A 相同，是否被环境变量覆盖 |
+| HAI 模型列表返回 401 | A 的 HAI key 是否正确，HAI 是否需要重新登录 |
+| `bridge_credentials_unavailable` / 503 | A 的认证文件或 token 文件是否可读 |
+| `upstream_unavailable` / 502 | HAI 是否仍在指定本机端口运行 |
+| `upstream_timeout` / 504 | HAI 或上游是否长时间无响应，是否需要调整 idle timeout |
+| 429 | HAI / 模型平台额度或容量限制，桥接不会自动重试 |
+| Windows 与 WSL 端口冲突 | 两边使用不同 `local_port`，分别建立 SSH 隧道 |
+
+桥接恢复并不能解除 HAI 的额度、模型、工具或登录限制。Mac 休眠、断网或 HAI 停止会中断正在进行的请求。

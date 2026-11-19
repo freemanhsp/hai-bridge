@@ -1,0 +1,9 @@
+{
+  "date": "2026-11-19",
+  "environment": { "os": "macOS", "node": "24.14.0", "hai": "1.4.9", "codex": "0.163.0" },
+  "integration_tests": { "passed": 14, "failed": 0 },
+  "doctor": { "bridge": "ok", "hai": "ok", "model_count": 14, "configured_model_available": true },
+  "responses": { "status": 200, "completed": true, "output_characters": 2, "input_tokens": 11, "output_tokens": 5 },
+  "codex": { "provider": "hai-bridge", "model": "gpt-6-luna", "exit_code": 0, "reply": "OK", "reported_tokens_used": 10556 },
+  "cross_device_tested": false
+}

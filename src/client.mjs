@@ -12,10 +12,11 @@ export async function diagnose(config, origin) {
   const health = await fetch(`${origin}/healthz`, { headers, signal: AbortSignal.timeout(10000), redirect: 'error' });
   if (!health.ok) throw new Error(`Bridge health check returned HTTP ${health.status}`);
   const models = await fetch(`${origin}/openai/v1/models`, { headers, signal: AbortSignal.timeout(15000), redirect: 'error' });
-  if (!models.ok) throw new Error(`HAI model list returned HTTP ${models.status}`);
+  if (!models.ok) throw new Error(`Upstream model list returned HTTP ${models.status}`);
   const body = await models.json();
-  if (!Array.isArray(body.data)) throw new Error('HAI returned an unexpected model-list format');
-  return { bridge: 'ok', hai: 'ok', model_count: body.data.length,
+  if (!Array.isArray(body.data)) throw new Error('Upstream returned an unexpected model-list format');
+  const mock = body.mock === true;
+  return { bridge: 'ok', hai: mock ? 'not_checked' : 'ok', mock, model_count: body.data.length,
     configured_model_available: body.data.some(model => model.id === config.model) };
 }
 

@@ -118,6 +118,32 @@ export function validateSshTarget(value) {
   return value;
 }
 
+export function sshValue(value) {
+  if (typeof value !== 'string' || !value || [...value].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) {
+    throw new Error('SSH configuration values must be nonempty and contain no control characters');
+  }
+  return JSON.stringify(process.platform === 'win32' ? value.split(String.fromCharCode(92)).join('/') : value);
+}
+
+export function sshFile(value, directory = process.cwd()) {
+  sshValue(value);
+  if (value.startsWith('~/')) return path.resolve(os.homedir(), value.slice(2));
+  return path.resolve(directory, value);
+}
+
+export function sshOptions(raw, directory) {
+  const file = value => value === undefined ? undefined : sshFile(value, directory);
+  const alias = raw.ssh_host_key_alias;
+  if (alias !== undefined && (typeof alias !== 'string' || !/^[A-Za-z0-9_.:-]+$/.test(alias))) {
+    throw new Error('Invalid ssh_host_key_alias');
+  }
+  return {
+    sshPort: raw.ssh_port === undefined ? undefined : validatePort(raw.ssh_port, 'ssh_port'),
+    identityFile: file(raw.identity_file), sshConfigFile: file(raw.ssh_config_file),
+    knownHostsFile: file(raw.known_hosts_file), hostKeyAlias: alias,
+  };
+}
+
 export async function exportClient(serverFile, outputFile, options) {
   const config = await loadServerConfig(serverFile);
   const bridgeToken = await credentialReaders(config).getBridgeToken();
@@ -145,6 +171,6 @@ export async function loadClientConfig(file = DEFAULT_CLIENT_CONFIG, env = proce
     localPort: validatePort(raw.local_port, 'local_port'), remoteHost: raw.remote_host,
     remotePort: validatePort(raw.remote_port, 'remote_port'), model: raw.model,
     reconnect: raw.reconnect === true, maxRetries: raw.max_retries,
-    identityFile: raw.identity_file ? path.resolve(path.dirname(configFile), raw.identity_file) : undefined,
+    ...sshOptions(raw, path.dirname(configFile)),
   };
 }

@@ -5,6 +5,8 @@ import { initializeServer, loadServerConfig, loadClientConfig, exportClient, cre
   DEFAULT_CLIENT_CONFIG, DEFAULT_SERVER_CONFIG } from '../src/config.mjs';
 import { createBridge } from '../src/bridge.mjs';
 import { runTunnel } from '../src/tunnel.mjs';
+import { initializePublisher, loadPublisherConfig, initializeRelayClient,
+  DEFAULT_PUBLISHER_CONFIG } from '../src/relay-config.mjs';
 import { clientOrigin, diagnose, probeInference, runCodex } from '../src/client.mjs';
 
 const HELP = `HAI Bridge MVP — Node.js 22+
@@ -13,12 +15,20 @@ const HELP = `HAI Bridge MVP — Node.js 22+
   pair         --ssh-target USER@MAC [--out PATH] [--local-port PORT] [--model MODEL]
   serve        [--server-config PATH]
   connect      [--client-config PATH]
+  init-publisher --ssh-target USER@ECS [--identity-file PATH] [--known-hosts-file PATH]
+                 [--publisher-config PATH] [--ssh-port PORT] [--relay-port PORT]
+  publish      [--publisher-config PATH]
+  init-relay-client --relay-target USER@ECS --mac-user USER --relay-identity-file PATH
+                    --identity-file PATH (--mock | --pairing-file PATH) [--out PATH]
+                    [--known-hosts-file PATH] [--ssh-port PORT] [--relay-port PORT] [--local-port PORT]
   doctor       [--client-config PATH] [--base-url URL]
   probe        [--client-config PATH] [--base-url URL] [--infer] [--model MODEL]
   codex        [--client-config PATH] [--base-url URL] -- [CODEX ARGS...]
 
 Default server config: .local/server.json
 Default client config: .local/client.json
+Default publisher config: .local/publisher.json
+publish/connect run in foreground; Ctrl-C stops only their own SSH child.
 Credentials are not printed. 'probe --infer' makes one small, billable model request.
 `;
 
@@ -29,11 +39,15 @@ async function main() {
   const userArgs = separator === -1 ? [] : raw.slice(separator + 1);
   const options = separator === -1 ? raw : raw.slice(0, separator);
   const { values, positionals } = parseArgs({ args: options, allowPositionals: true, options: {
-    help: { type: 'boolean', short: 'h' }, infer: { type: 'boolean' },
+    help: { type: 'boolean', short: 'h' }, infer: { type: 'boolean' }, mock: { type: 'boolean' },
     'server-config': { type: 'string' }, 'client-config': { type: 'string' },
     'upstream-url': { type: 'string' }, 'upstream-auth-file': { type: 'string' },
     'ssh-target': { type: 'string' }, 'local-port': { type: 'string' },
     out: { type: 'string' }, model: { type: 'string' }, 'base-url': { type: 'string' },
+    'publisher-config': { type: 'string' }, 'relay-target': { type: 'string' }, 'mac-user': { type: 'string' },
+    'identity-file': { type: 'string' }, 'relay-identity-file': { type: 'string' },
+    'known-hosts-file': { type: 'string' }, 'ssh-port': { type: 'string' }, 'relay-port': { type: 'string' },
+    'pairing-file': { type: 'string' },
   } });
   if (!command || command === 'help' || command === '--help' || command === '-h' || values.help) {
     console.log(HELP); return;
@@ -41,6 +55,35 @@ async function main() {
   if (positionals.length) throw new Error('Unexpected positional arguments; pass Codex arguments after --');
   const serverFile = values['server-config'] || DEFAULT_SERVER_CONFIG;
   const clientFile = values['client-config'] || DEFAULT_CLIENT_CONFIG;
+  const publisherFile = values['publisher-config'] || DEFAULT_PUBLISHER_CONFIG;
+  if (command === 'init-publisher') {
+    const file = await initializePublisher(publisherFile, {
+      sshTarget: values['ssh-target'], identityFile: values['identity-file'], knownHostsFile: values['known-hosts-file'],
+      sshPort: values['ssh-port'] === undefined ? undefined : Number(values['ssh-port']),
+      relayPort: values['relay-port'] === undefined ? undefined : Number(values['relay-port']),
+    });
+    console.log('Publisher configuration created: ' + file);
+    return;
+  }
+  if (command === 'publish') {
+    process.exitCode = await runTunnel(await loadPublisherConfig(publisherFile));
+    return;
+  }
+  if (command === 'init-relay-client') {
+    const files = await initializeRelayClient(values.out || DEFAULT_CLIENT_CONFIG, {
+      relayTarget: values['relay-target'], macUser: values['mac-user'],
+      relayIdentityFile: values['relay-identity-file'], identityFile: values['identity-file'],
+      knownHostsFile: values['known-hosts-file'], pairingFile: values['pairing-file'], mock: values.mock,
+      sshPort: values['ssh-port'] === undefined ? undefined : Number(values['ssh-port']),
+      relayPort: values['relay-port'] === undefined ? undefined : Number(values['relay-port']),
+      localPort: values['local-port'] === undefined ? undefined : Number(values['local-port']),
+    });
+    console.log('Client configuration created: ' + files.clientFile);
+    console.log('Dedicated SSH profile created: ' + files.sshConfigFile);
+    console.log(files.mock ? 'MOCK ONLY: public fixture token, no HAI credentials. Start the mock service on A separately.'
+      : 'Bridge token imported from pairing file; no HAI identity is copied.');
+    return;
+  }
   if (command === 'init-server') {
     const file = await initializeServer(serverFile, {
       upstreamUrl: values['upstream-url'], upstreamAuthFile: values['upstream-auth-file'],

@@ -8,6 +8,8 @@ npm run dev
 
 等价于 node bin/hai-bridge.mjs dev。默认真实 bridge 监听 127.0.0.1:18090，上游是本进程创建的随机 loopback 模拟服务，不连接真实 HAI、不读取其配置或环境凭证。该端口与历史实验 18080、真实 bridge 16656 分开。
 
+安装本地包后，可在其他目录用 hai-bridge dev（Windows 可用 hai-bridge.cmd dev），无需源码；打印的诊断命令使用本次 Node.js/CLI 的绝对路径。见 [安装说明](installation.md)。
+
 终端保持运行；输出会提供临时 client 配置路径及两条可复制命令。在另一个终端执行输出中的 doctor 和 probe 命令即可。doctor 应返回 mock=true、hai=not_checked；此配置的 probe --infer 只访问本机模拟服务，不调用真实模型、不计费，完成事件返回零 token 用量。
 
 端口占用时可以自动选择空闲端口：

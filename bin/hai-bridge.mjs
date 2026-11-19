@@ -10,9 +10,11 @@ import { initializePublisher, loadPublisherConfig, initializeRelayClient,
 import { clientOrigin, diagnose, probeInference, runCodex } from '../src/client.mjs';
 import { diagnoseOffline, formatOfflineReport } from '../src/preflight.mjs';
 import { runDevelopment } from '../src/dev.mjs';
+import { PACKAGE_NAME, VERSION, versionInfo } from '../src/version.mjs';
 
 const HELP = `HAI Bridge MVP — Node.js 22+
 
+  version      [--json] (also --version / -v)
   init-server  [--server-config PATH] [--upstream-url URL] [--upstream-auth-file PATH]
   pair         --ssh-target USER@MAC [--out PATH] [--local-port PORT] [--model MODEL]
   serve        [--server-config PATH]
@@ -32,6 +34,7 @@ const HELP = `HAI Bridge MVP — Node.js 22+
 Default server config: .local/server.json
 Default client config: .local/client.json
 Default publisher config: .local/publisher.json
+Default configuration paths are relative to your current working directory, not the install directory.
 publish/connect run in foreground; Ctrl-C stops only their own SSH child.
 Credentials are not printed. 'probe --infer' is billable with a real upstream; dev is synthetic.
 Offline doctor never connects to SSH/HAI or changes trust; it briefly checks local port binding.
@@ -41,6 +44,11 @@ dev starts only local mock services (default port 18090); config is temporary un
 async function main() {
   const raw = process.argv.slice(2);
   const command = raw.shift();
+  if (['version', '--version', '-v'].includes(command)) {
+    const { values } = parseArgs({ args: raw, options: { json: { type: 'boolean' } } });
+    console.log(values.json ? JSON.stringify(versionInfo()) : PACKAGE_NAME + ' ' + VERSION);
+    return;
+  }
   const separator = raw.indexOf('--');
   const userArgs = separator === -1 ? [] : raw.slice(separator + 1);
   const options = separator === -1 ? raw : raw.slice(0, separator);

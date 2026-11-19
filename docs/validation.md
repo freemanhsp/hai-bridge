@@ -10,7 +10,7 @@
 
 ## 自动化覆盖
 
-截至 2026-11-20，默认 `npm test` 共 63 项通过。原有 14 项覆盖错误 token 不访问 HAI、凭证替换与工具头保留、路径/方法限制、SSE 首块及时到达、取消传播、压缩字节保持、429 及重试提示保留、超时与凭证错误、1 MiB 请求体完整性、请求体大小限制、配对隔离与 key 轮换、配置限制、Codex 凭证不进入参数、SSH 安全参数和参数注入拒绝。
+截至 2026-11-20，默认 `npm test` 共 70 项通过。原有 14 项覆盖错误 token 不访问 HAI、凭证替换与工具头保留、路径/方法限制、SSE 首块及时到达、取消传播、压缩字节保持、429 及重试提示保留、超时与凭证错误、1 MiB 请求体完整性、请求体大小限制、配对隔离与 key 轮换、配置限制、Codex 凭证不进入参数、SSH 安全参数和参数注入拒绝。
 
 新封装增加 17 项：publisher/relay client 配置边界、独立双身份 profile 与本机 `ssh -G` 解析、不覆盖旧文件、显式模拟/配对模式、扩展 SSH 字段、离线 CLI、SSH 失败分类与退避预算、前台取消/子进程回收，以及模拟上游的明确诊断。重连和故障分类使用注入的模拟进程，不是跨设备网络实测。
 
@@ -93,3 +93,13 @@ Windows 取消长流后，模拟上游 cancelled 计数从 1 增至 2、active �
 Mac 实际运行新 dev CLI（随机端口）后，doctor 为 mock=true、hai=not_checked；probe 的合成 SSE HTTP200/completed、11个输出字符、input/output tokens均0。Ctrl-C退出0并输出 stopped；确认本次临时配置及目录消失。旧中继和历史模拟服务没有接管/重启。
 
 CLI 环境隔离测试给子进程注入非真实的毒化认证值，仍只使用固定模拟凭证；未读取真实认证文件或调用真实模型。类Unix CLI SIGTERM测试通过，Windows该项跳过，不能标记Windows/WSL实机通过。原有默认测试和独立实验回归分开执行。
+
+## 本地安装与版本交付（2026-11-20）
+
+增加 7 项交付回归后，默认 70 / 70 本机通过；历史模拟实验独立 7 / 7 通过。npm run check、全部 src/bin/scripts/test 模块语法与 Git 差异检查通过。
+
+覆盖版本信息从包位置读取而非当前目录、无配置离线输出、文件白名单/缺失入口、意外 npm 自动包含文件拒绝、私有包约束、禁用生命周期脚本、排除合成私密文件、SHA-256、一批产物不覆盖上一批、临时 prefix 离线安装及 npm bin 入口。探针 User-Agent 与 CLI 共用 package.json 版本。
+
+Mac 实际安装包在含空格/单引号的独立临时目录使用，远离源码目录执行 --version 和帮助；安装后 dev 打印的两条安全引用命令实际执行，doctor mock=true/hai=not_checked，SSE completed=true、input/output tokens 均为0。SIGTERM 退出0且临时配置已删除，临时安装目录由测试清理。未改系统全局安装，未访问真实 HAI/SSH，未接管旧服务。
+
+Windows 引用规则有注入测试；安装后 dev 的 Unix SIGTERM 检查在 Windows 跳过，Windows .cmd/PowerShell 与 WSL 实机结果仍未取得。交付方式见 [安装说明](installation.md)，此批不等于真实中转已获授权或端到端已验证。

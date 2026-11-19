@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
+import { fileURLToPath } from 'node:url';
 import { createBridge } from './bridge.mjs';
 import { validatePort, writePrivateFile } from './config.mjs';
 
@@ -143,12 +144,14 @@ function quotedArgument(value, platform) {
   return "'" + value.replaceAll("'", platform === 'win32' ? "''" : "'\"'\"'") + "'";
 }
 
-export function formatDevelopmentReady(service, platform = process.platform) {
+export function formatDevelopmentReady(service, platform = process.platform, { executable = process.execPath,
+  cli = fileURLToPath(new URL('../bin/hai-bridge.mjs', import.meta.url)) } = {}) {
   const configArg = quotedArgument(service.clientFile, platform);
+  const command = (platform === 'win32' ? '& ' : '') + quotedArgument(executable, platform) + ' ' + quotedArgument(cli, platform);
   return ['MOCK ONLY: real bridge at ' + service.origin + '; synthetic loopback upstream.',
     (service.temporary ? 'Temporary' : 'Persistent') + ' client config: ' + service.clientFile,
-    'node bin/hai-bridge.mjs doctor --client-config ' + configArg,
-    'node bin/hai-bridge.mjs probe --client-config ' + configArg + ' --infer --model relay-ok',
+    command + ' doctor --client-config ' + configArg,
+    command + ' probe --client-config ' + configArg + ' --infer --model relay-ok',
     'No SSH, HAI credentials or real model calls. Use synthetic input only. Ctrl-C stops both owned servers.'].join('\n');
 }
 

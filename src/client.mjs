@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { loopbackUrl } from './config.mjs';
+import { PACKAGE_NAME, VERSION } from './version.mjs';
 
 export function clientOrigin(config, override) {
   return loopbackUrl(override || `http://127.0.0.1:${config.localPort}`).origin;
@@ -24,7 +25,7 @@ export async function probeInference(config, origin, model = 'gpt-6-luna') {
   const response = await fetch(`${origin}/openai/v1/responses`, {
     method: 'POST', redirect: 'error', signal: AbortSignal.timeout(60000),
     headers: { Authorization: `Bearer ${config.token}`, 'Content-Type': 'application/json',
-      'User-Agent': 'hai-bridge-mvp-probe/0.1.0' },
+      'User-Agent': PACKAGE_NAME + '-probe/' + VERSION },
     body: JSON.stringify({ model, input: 'Reply only with OK.', max_output_tokens: 64,
       reasoning: { effort: 'low' }, store: false, stream: true }),
   });

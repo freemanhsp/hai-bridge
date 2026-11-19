@@ -1,4 +1,4 @@
-# HAI Bridge MVP
+# HAI Bridge
 
 让 B 上的 AI 工具经 SSH 访问 A 上已经认证的 HAI 代理。当前目标是 Mac A + Windows 11 原生 / WSL B，先验证 Codex 的完整请求与流式返回。
 
@@ -7,6 +7,18 @@ B 的 Codex → B:16655 → SSH → A:16656 桥接 → A:6655 HAI → 公司平�
 ```
 
 HAI key 和公司登录凭证留在 A。B 的配对文件只有独立的桥接 token。运行需要 Node.js 22+，没有第三方 npm 依赖。
+
+## 安装与版本
+
+源码工作区运行 npm run pack 可生成本地 .tgz 包和 SHA-256，方便将同一份代码交付其他设备。没有发布到 npm；安装包不含 .local、mydocs、explore 或凭证。
+
+~~~sh
+npm install --global --offline --ignore-scripts --no-audit --no-fund ./hai-bridge-0.1.0.tgz
+hai-bridge --version
+hai-bridge dev --port 0
+~~~
+
+先核对可信来源的校验值再安装。Windows 可用 npm.cmd / hai-bridge.cmd，WSL 独立安装。现有 node bin/hai-bridge.mjs 在安装后可换成 hai-bridge；配置仍相对当前工作目录。详见 [安装说明](docs/installation.md)。
 
 ## 工作区
 

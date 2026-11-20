@@ -1,5 +1,7 @@
 # 配置与排障
 
+本页描述原有 SSH MVP。Mac Remote Login 已被管理策略关闭；不按旧排障步骤重新开启被关闭的功能。当前应用级 mock 使用独立配对/脚本，见[应用 TLS 验证](application-tls-validation.md)。
+
 ## Mac 配置
 
 `init-server` 生成 `.local/server.json` 和 `.local/bridge.token`。初始化和配对均拒绝覆盖已有文件。需要改变设置时编辑生成的 JSON，或选择新的输出路径。

@@ -1,5 +1,7 @@
 # ECS 中继 CLI
 
+历史实现：本机管理策略已关闭 Mac Remote Login，此内层 SSH 方案暂停，不应重新开启系统登录来执行本页步骤。新验证入口见[应用双向 TLS](application-tls-validation.md)。
+
 这是手工双层 SSH 的前台封装，不是新的代理协议。当前跨 ECS 验证仅使用模拟上游；真实 HAI 中继要先确认该具体网络路径的授权。
 
 ```text

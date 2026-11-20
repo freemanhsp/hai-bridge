@@ -1,5 +1,7 @@
 # MVP 架构
 
+2026-11-20 新约束：管理策略明确关闭本机 Remote Login，下述依赖 Mac SSH 服务的架构仅作为历史实现保留。当前候选改为双方出站 SSH 至 ECS、端到端应用双向 TLS，见[应用 TLS 验证](application-tls-validation.md)。不修改系统登录或安全策略；真实 HAI 迁移尚未实现。
+
 ```mermaid
 flowchart LR
   tool[B: Codex] --> local[B: 127.0.0.1:16655]

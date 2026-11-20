@@ -1,5 +1,7 @@
 # 纯本机开发模式
 
+独立的[应用 TLS mock 实验](application-tls-validation.md)另需 OpenSSL（支持 -addext）和 tar 来生成短期测试身份；默认 npm test 已包含该实验回归，因此运行完整源码测试也需要它们。Windows 交付包仅运行已配对的 Node/OpenSSH 探针，不要求 Windows 安装 OpenSSL。
+
 只需 Node.js 22+，不用准备 SSH、Windows 设备、VPN 或 HAI 登录：
 
 ~~~sh

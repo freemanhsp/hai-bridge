@@ -1,5 +1,7 @@
 # HAI Bridge
 
+2026-11-20 更新：本机管理策略已关闭 Mac Remote Login，不再推进依赖系统登录的链路。新的[应用双向 TLS mock 验证](docs/application-tls-validation.md)不需要 Mac SSH 服务，附 Windows/WSL 集中脚本；尚未接入真实 HAI。以下原有 SSH CLI 保留为历史实现，不应为了使用它重新开启被策略关闭的功能。
+
 让 B 上的 AI 工具经 SSH 访问 A 上已经认证的 HAI 代理。当前目标是 Mac A + Windows 11 原生 / WSL B，先验证 Codex 的完整请求与流式返回。
 
 ```text

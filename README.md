@@ -1,6 +1,6 @@
 # HAI Bridge
 
-2026-11-20 更新：本机管理策略已关闭 Mac Remote Login，不再推进依赖系统登录的链路。当前 0.4.0 新增显式 --hai 的[最小真实接入](docs/real-hai.md)，保留隔离的 mock 模式：A 用 publish-app、B 用 connect-app，各自运行应用和到 ECS 的单条出站 SSH，无需云端部署我们的程序。Windows 已收到mock21/21及真实HAI流式调用5/5通过的完整用户报告；WSL、实际工具会话与长期恢复另行验证。以下原有 SSH CLI 保留为历史实现，不应为了使用它重新开启被策略关闭的功能。
+2026-11-21 更新：0.5.0 新增[日常单命令启动](docs/daily-start.md)：Mac 记住配置后 publish-app；B 导入已有真实配对后 start 自动连接并启动一次 Codex，退出清理自有连接。沿用0.4.0的[最小真实接入](docs/real-hai.md)与隔离 mock。Windows 已收到mock21/21及0.4.0真实HAI流式调用5/5完整用户报告；新单命令封装、WSL、实际工具任务与长期恢复仍另行验证。Mac 管理策略已关闭 Remote Login，不再推进依赖系统登录的链路；无需云端部署我们的程序。以下旧系统 SSH CLI 保留为历史实现，不应为了使用它重新开启被策略关闭的功能。
 
 让 B 上的 AI 工具经 SSH 访问 A 上已经认证的 HAI 代理。当前目标是 Mac A + Windows 11 原生 / WSL B，先验证 Codex 的完整请求与流式返回。
 
@@ -15,12 +15,22 @@ HAI key 和公司登录凭证留在 A。B 的私有配对含独立桥接 token �
 源码工作区运行 npm run pack 可生成本地 .tgz 包和 SHA-256，方便将同一份代码交付其他设备。没有发布到 npm；安装包不含 .local、mydocs、explore 或凭证。
 
 ~~~sh
-npm install --global --offline --ignore-scripts --no-audit --no-fund ./hai-bridge-0.4.0.tgz
+npm install --global --offline --ignore-scripts --no-audit --no-fund ./hai-bridge-0.5.0.tgz
 hai-bridge --version
 hai-bridge dev --port 0
 ~~~
 
-先核对可信来源的校验值再安装。Windows 可用 npm.cmd / hai-bridge.cmd，WSL 独立安装。现有 node bin/hai-bridge.mjs 在安装后可换成 hai-bridge；配置仍相对当前工作目录。详见 [安装说明](docs/installation.md)。
+先核对可信来源的校验值再安装。Windows 可用 npm.cmd / hai-bridge.cmd，WSL 独立安装。现有 node bin/hai-bridge.mjs 在安装后可换成 hai-bridge；旧命令配置仍相对当前工作目录，新 start 默认使用个人 ~/.hai-bridge/client.json。详见 [安装说明](docs/installation.md)。
+
+已有成功的真实 B 配对时，一次导入后每天在测试项目目录执行：
+
+~~~powershell
+hai-bridge.cmd setup-client --client-config 'D:\旧交付\.local\run-时间\client.json'
+# 以下为日常使用；不要同时另开同端口 connect-app
+hai-bridge.cmd start
+~~~
+
+start 保持 Codex 工作目录在 B 项目中，不改全局 Codex 配置；实际任务会计费。详细 Mac/Windows 步骤与一次集中检查见[日常启动](docs/daily-start.md)。
 
 ## 工作区
 

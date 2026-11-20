@@ -8,11 +8,12 @@ export function clientOrigin(config, override) {
   return loopbackUrl(override || `http://127.0.0.1:${config.localPort}`).origin;
 }
 
-export async function diagnose(config, origin) {
+export async function diagnose(config, origin, { signal } = {}) {
   const headers = { Authorization: `Bearer ${config.token}` };
-  const health = await fetch(`${origin}/healthz`, { headers, signal: AbortSignal.timeout(10000), redirect: 'error' });
+  const timeout = milliseconds => signal ? AbortSignal.any([signal, AbortSignal.timeout(milliseconds)]) : AbortSignal.timeout(milliseconds);
+  const health = await fetch(`${origin}/healthz`, { headers, signal: timeout(10000), redirect: 'error' });
   if (!health.ok) throw new Error(`Bridge health check returned HTTP ${health.status}`);
-  const models = await fetch(`${origin}/openai/v1/models`, { headers, signal: AbortSignal.timeout(15000), redirect: 'error' });
+  const models = await fetch(`${origin}/openai/v1/models`, { headers, signal: timeout(15000), redirect: 'error' });
   if (!models.ok) throw new Error(`Upstream model list returned HTTP ${models.status}`);
   const body = await models.json();
   if (!Array.isArray(body.data)) throw new Error('Upstream returned an unexpected model-list format');
@@ -109,21 +110,49 @@ async function executableInvocation(env) {
   throw new Error('Cannot find Codex; install @openai/codex with npm or set HAI_CODEX_EXECUTABLE');
 }
 
-export async function runCodex(config, origin, userArgs, env = process.env) {
+export async function runCodex(config, origin, userArgs, env = process.env, {
+  signals = process, signal, cwd, spawnProcess = spawn, platform = process.platform,
+  terminateTree = child => {
+    // Windows npm entrypoints can own a native Codex grandchild. Scope termination to our live PID.
+    const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', shell: false });
+    const fallback = () => { if (child.exitCode == null && child.signalCode == null) { try { child.kill('SIGTERM'); } catch {} } };
+    killer.once('error', fallback);
+    killer.once('close', code => { if (code !== 0) fallback(); });
+  },
+} = {}) {
+  if (signal?.aborted) return 130;
   const invocation = await executableInvocation(env);
+  if (signal?.aborted) return 130;
   return await new Promise((resolve, reject) => {
-    const child = spawn(invocation.command, [...invocation.prefix, ...codexArguments(config, origin, userArgs)], {
-      stdio: 'inherit', shell: false, env: { ...env, HAI_BRIDGE_TOKEN: config.token },
+    const child = spawnProcess(invocation.command, [...invocation.prefix, ...codexArguments(config, origin, userArgs)], {
+      stdio: 'inherit', shell: false, env: { ...env, HAI_BRIDGE_TOKEN: config.token }, ...(cwd ? { cwd } : {}),
     });
-    const stop = () => child.kill('SIGTERM');
-    process.once('SIGTERM', stop);
+    let closed = false, exited = false, stopped = false, timer;
+    child.once('exit', () => { exited = true; clearTimeout(timer); });
+    const cleanup = () => {
+      closed = true; clearTimeout(timer);
+      signals.removeListener('SIGINT', stop); signals.removeListener('SIGTERM', stop);
+      signal?.removeEventListener('abort', stop);
+    };
+    const stop = () => {
+      if (closed || exited || stopped) return; stopped = true;
+      const kill = name => { if (!closed && !exited) { try { child.kill(name); } catch {} } };
+      try {
+        if (platform === 'win32' && Number.isInteger(child.pid) && child.pid > 0) terminateTree(child);
+        else kill('SIGTERM');
+      } catch { kill('SIGTERM'); }
+      if (!closed && !exited) { timer = setTimeout(() => kill('SIGKILL'), 2000); timer.unref?.(); }
+    };
+    signals.once('SIGINT', stop); signals.once('SIGTERM', stop);
+    signal?.addEventListener('abort', stop, { once: true });
     child.once('error', () => {
-      process.removeListener('SIGTERM', stop);
+      cleanup();
       reject(new Error('Cannot start Codex; check installation and PATH'));
     });
-    child.once('exit', (code, signal) => {
-      process.removeListener('SIGTERM', stop);
-      resolve(code ?? (signal ? 1 : 0));
+    child.once('close', (code, exitSignal) => {
+      cleanup();
+      resolve(stopped ? 130 : code ?? (exitSignal ? 1 : 0));
     });
+    if (signal?.aborted) stop();
   });
 }

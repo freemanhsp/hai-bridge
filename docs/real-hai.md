@@ -36,6 +36,8 @@ Mac 工作区生成私有包：
 
 ## 直接命令与实际工具
 
+0.5.0 已提供更短的日常入口：一次 setup-client 后在项目中 start；Mac 一次 setup-publisher 后 publish-app 无需长配置路径。见[日常单命令启动](daily-start.md)。下面的两终端方式仍可用，不要与 start 同时占用同一端口。
+
 源码已在 Git 中；也可按安装说明使用普通离线 .tgz，单独传 client-pair：
 
     hai-bridge init-app-client --hai --pairing-dir ./client-pair --ssh-target hai-jump@ECS_HOST --identity-file /PATH/hai_ecs_b --known-hosts-file /PATH/known_hosts

@@ -69,7 +69,11 @@ export async function runApplication(config, { signals = process, onEvent = () =
     return code;
   } catch (error) {
     emit('failed', { reason: ['EADDRINUSE', 'EACCES', 'EPERM'].includes(error.code) ? error.code : 'startup_error' });
-    throw new Error('Application startup failed; check isolated pairing, file permissions, loopback ports and OpenSSH');
+    const failure = new Error(error.code === 'EADDRINUSE'
+      ? 'Application port is already in use; stop your previous owned instance or keep using it. No existing process was stopped.'
+      : 'Application startup failed; check isolated pairing, file permissions, loopback ports and OpenSSH');
+    failure.code = error.code;
+    throw failure;
   } finally {
     clearTimeout(forceTimer);
     await service?.close();

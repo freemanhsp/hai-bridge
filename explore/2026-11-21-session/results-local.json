@@ -1,0 +1,26 @@
+{
+  "version": "0.5.0",
+  "date": "2026-11-21",
+  "platform": "darwin",
+  "node": "24.14.0",
+  "evidence": "assistant-local-automated-summary-synthetic-HAI-mTLS-TCP-stub-synthetic-Codex",
+  "summary_not_raw_test_output": true,
+  "hai": "not_called",
+  "real_model_requests": 0,
+  "status": "pass",
+  "test": { "total": 132, "passed": 132, "failed": 0, "new_session_tests": 16 },
+  "cli_syntax_check": "pass",
+  "module_syntax": { "checked": 36, "status": "pass" },
+  "installed_off_source_synthetic_session": "pass",
+  "windows_process_tree_logic": "injected_local_test_only",
+  "not_checked": [
+    "PowerShell_script_execution",
+    "Windows_0.5.0_installed_start",
+    "Windows_Ctrl_C_real_process_tree",
+    "WSL",
+    "real_AI_tool_task",
+    "A_outer_link_recovery",
+    "VPN_sleep_resume",
+    "long_term_stability"
+  ]
+}

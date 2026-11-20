@@ -1,5 +1,13 @@
 # 验证记录
 
+## 日常启动 0.5.0（2026-11-21）
+
+新增16项默认回归后，本机132/132通过；npm run check、36个src/bin/scripts/test模块语法检查通过。setup-client私下复制已有B身份并保留端口/重连预算，setup-publisher只写原配置路径。start管理一次B连接与Codex，在固定mTLS及GET模型检查之后才启动工具；保持项目cwd、token仅子进程环境，不改全局Codex配置或网络权限。
+
+覆盖正常/非零退出、启动前/握手中/工具运行中取消、TLS超时、缺失Codex、终止SSH认证失败不重启工具、既有HTTP/TLS监听保护、私有目录及symlink拒绝、CLI参数拒绝、Windows定向自有活跃PID终止/失败回退逻辑。实际普通tgz独立prefix离线安装后，异地项目中setup-client→start→合成Codex --help→退出/端口释放通过；测试使用合成HAI、真实mTLS、TCP/OpenSSH子进程替身，没有真实HAI调用或新网络路径。
+
+[本机安全摘要](../explore/2026-11-21-session/results-local.json)仅记录测试结果，不含身份或业务内容。Mac未安装PowerShell，新增windows-session-checks.ps1经过代码检查但未实际运行；它供Windows一次校验/安装/导入后连续两次start -- --help，不做推理。Windows/WSL新版本实机、Windows Ctrl-C真实进程树、完整工具读写任务、A外层/VPN/休眠与长期稳定性仍未验证；旧0.4.0真实5/5用户报告不替代这些项目。既有A publisher未接管、重启或停止。
+
 ## 最小真实 HAI 应用接入 0.4.0（2026-11-20）
 
 用户明确确认可尝试个人 Windows → 个人 ECS → 公司 Mac HAI 的既有路径。本轮新增隔离 --hai 配对/随机 token、固定 A loopback 上游及逐请求认证读取、B try-hai 与 Windows 私有一次试用包；check-app 和原 mock 交付仍只接受 mock。无 VPN/MDM/系统登录/云端权限修改，不导出 HAI key。

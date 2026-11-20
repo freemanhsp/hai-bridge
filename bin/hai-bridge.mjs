@@ -17,16 +17,21 @@ import { initializeApplicationPublisher, initializeApplicationClient, loadApplic
 import { runApplication } from '../src/app-runtime.mjs';
 import { checkApplicationClient } from '../src/app-checks.mjs';
 import { tryHai } from '../src/hai-trial.mjs';
+import { setupClient, setupPublisher, defaultPublisherFile } from '../src/profiles.mjs';
+import { startSession } from '../src/session.mjs';
 
 const HELP = `HAI Bridge MVP — Node.js 22+
 
   version      [--json] (also --version / -v)
+  setup-client --client-config EXISTING_REAL_CLIENT [--profile-dir DIRECTORY]
+  setup-publisher --server-config PATH [--profile-dir DIRECTORY]
+  start        [--client-config PATH] [--profile-dir DIRECTORY] [--project DIRECTORY] -- [CODEX ARGS...]
   init-app     (--mock | --hai --upstream-url URL --upstream-auth-file PATH --model MODEL)
                --ssh-target USER@ECS --identity-file PATH --known-hosts-file PATH
                [--out DIRECTORY] [--app-port PORT] [--relay-port PORT] [--ssh-port PORT] [--max-retries N]
   init-app-client (--mock | --hai) --pairing-dir DIRECTORY --ssh-target USER@ECS --identity-file PATH --known-hosts-file PATH
                   [--out PATH] [--local-port PORT] [--tunnel-port PORT] [--relay-port PORT] [--ssh-port PORT] [--max-retries N]
-  publish-app  --server-config PATH [--json]
+  publish-app  [--server-config PATH | --profile-dir DIRECTORY] [--json]
   connect-app  [--client-config PATH] [--json]
   check-app    --client-config PATH --out PATH [--interrupt-ssh] [--json]
   try-hai      --client-config PATH --out PATH [--infer] [--json] (owns B connection; --infer is billable)
@@ -59,6 +64,9 @@ check-lifecycle is MOCK ONLY and owns its SSH; --interrupt-ssh intentionally sto
 Application TLS supports isolated --mock or explicit --hai; A/B use outbound ECS SSH, never Mac system login.
 check-app stays MOCK ONLY. --hai needs a new pairing and keeps all HAI credentials on A.
 Application init needs OpenSSL on A only. B imports a private short-lived TLS pairing; never upload its keys.
+setup-client copies a real B profile privately to ~/.hai-bridge; setup-publisher remembers only A's config path.
+start owns B connection + one Codex invocation; exit closes only its resources. Stop old connect-app first.
+start keeps the project as Codex working directory; it does not install a background service.
 `;
 
 async function main() {
@@ -86,15 +94,37 @@ async function main() {
     'pairing-file': { type: 'string' },
     'pairing-dir': { type: 'string' }, 'app-port': { type: 'string' }, 'tunnel-port': { type: 'string' },
     'max-retries': { type: 'string' },
+    'profile-dir': { type: 'string' }, project: { type: 'string' },
   } });
   if (!command || command === 'help' || command === '--help' || command === '-h' || values.help) {
     console.log(HELP); return;
   }
   if (positionals.length) throw new Error('Unexpected positional arguments; pass Codex arguments after --');
+  if (['setup-client', 'setup-publisher', 'start'].includes(command)) {
+    const allowed = command === 'setup-client' ? ['client-config', 'profile-dir']
+      : command === 'setup-publisher' ? ['server-config', 'profile-dir'] : ['client-config', 'profile-dir', 'project'];
+    if (Object.keys(values).some(key => !allowed.includes(key)) || (command !== 'start' && userArgs.length)) throw new Error('Unsupported daily startup options');
+    if (command === 'setup-client') {
+      console.log('Private daily client: ' + await setupClient(values['client-config'], values['profile-dir']));
+      console.log('Run hai-bridge start from your project. Existing pairing expiry is unchanged; no HAI credentials were copied.');
+    } else if (command === 'setup-publisher') {
+      console.log('Private publisher default: ' + await setupPublisher(values['server-config'], values['profile-dir']));
+      console.log('Run publish-app when your previous publisher has stopped; setup did not start or replace it.');
+    } else {
+      process.exitCode = await startSession({ clientFile: values['client-config'], profileDir: values['profile-dir'],
+        project: values.project, userArgs }, { onEvent(event) {
+        if (event.event === 'session') {
+          console.error('HAI session: ' + event.state);
+          if (event.state === 'codex_starting') console.error('BILLABLE: Codex uses real HAI through A. Credentials stay outside your project; no session auto-restart.');
+        } else if (event.state === 'failed' || event.state === 'retry_wait') console.error('HAI transport: ' + event.state + (event.reason ? ' (' + event.reason + ')' : ''));
+      } });
+    }
+    return;
+  }
   if (['init-app', 'init-app-client', 'publish-app', 'connect-app', 'check-app', 'try-hai'].includes(command)) {
     const allowed = command === 'init-app' ? ['mock', 'hai', 'upstream-url', 'upstream-auth-file', 'model', 'ssh-target', 'identity-file', 'known-hosts-file', 'out', 'app-port', 'relay-port', 'ssh-port', 'max-retries']
       : command === 'init-app-client' ? ['mock', 'hai', 'ssh-target', 'identity-file', 'known-hosts-file', 'pairing-dir', 'out', 'local-port', 'tunnel-port', 'relay-port', 'ssh-port', 'max-retries']
-      : command === 'publish-app' ? ['server-config', 'json']
+      : command === 'publish-app' ? ['server-config', 'profile-dir', 'json']
       : command === 'connect-app' ? ['client-config', 'json']
       : command === 'try-hai' ? ['client-config', 'out', 'infer', 'json'] : ['client-config', 'out', 'interrupt-ssh', 'json'];
     if (userArgs.length || Object.keys(values).some(key => !allowed.includes(key))) throw new Error('Unsupported application command options');
@@ -129,14 +159,15 @@ async function main() {
         : 'MOCK application checks: ' + result.report.status + '; report: ' + result.destination);
       process.exitCode = ['fail', 'interrupted'].includes(result.report.status) ? 1 : 0;
     } else {
-      if (command === 'publish-app' && !values['server-config']) throw new Error('publish-app requires --server-config');
       const role = command === 'publish-app' ? 'publisher' : 'client';
-      const config = await loadApplicationConfig(role === 'publisher' ? values['server-config'] : values['client-config'] || DEFAULT_APP_CLIENT_CONFIG, role);
+      const file = role === 'publisher' ? values['server-config'] || await defaultPublisherFile(values['profile-dir'])
+        : values['client-config'] || DEFAULT_APP_CLIENT_CONFIG;
+      const config = await loadApplicationConfig(file, role);
       process.exitCode = await runApplication(config, { onEvent: event });
     }
     return;
   }
-  if (['hai', 'pairing-dir', 'app-port', 'tunnel-port', 'max-retries'].some(key => values[key] !== undefined)) throw new Error('Application options require an application command');
+  if (['hai', 'pairing-dir', 'app-port', 'tunnel-port', 'max-retries', 'profile-dir', 'project'].some(key => values[key] !== undefined)) throw new Error('Application options require an application command');
   const serverFile = values['server-config'] || DEFAULT_SERVER_CONFIG;
   const clientFile = values['client-config'] || DEFAULT_CLIENT_CONFIG;
   const publisherFile = values['publisher-config'] || DEFAULT_PUBLISHER_CONFIG;

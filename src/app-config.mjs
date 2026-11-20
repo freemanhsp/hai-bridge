@@ -68,11 +68,12 @@ async function checkSshFiles(identityFile, knownHostsFile) {
 function commonOptions(options) {
   if (Boolean(options.mock) === Boolean(options.hai)) throw new Error('Application initialization requires exactly one of --mock or --hai');
   if (options.mock && [options.upstreamUrl, options.upstreamAuthFile, options.model].some(value => value !== undefined)) throw new Error('Mock application does not accept HAI options');
+  if (options.reconnect !== undefined && typeof options.reconnect !== 'boolean') throw new Error('Application reconnect must be a boolean');
   return { schema_version: APPLICATION_SCHEMA, transport: APPLICATION_TRANSPORT, mode: options.hai ? 'hai' : 'mock',
     ssh_target: endpoint(options.sshTarget), ssh_port: validatePort(options.sshPort ?? 22, 'ssh_port'),
     identity_file: sshFile(options.identityFile), known_hosts_file: sshFile(options.knownHostsFile),
     relay_port: applicationPort(options.relayPort ?? 18083, 'relay_port'),
-    reconnect: true, max_retries: retryBudget(options.maxRetries ?? 5) };
+    reconnect: options.reconnect ?? true, max_retries: retryBudget(options.maxRetries ?? 5) };
 }
 
 export async function initializeApplicationPublisher(outputRoot = DEFAULT_APP_SERVER_ROOT, options = {}) {

@@ -8,7 +8,9 @@ B 交付包实际 tar 清单与白名单一致，只包含短期 B TLS identity�
 
 Mac 实际已启动 A 应用 TLS 18081 与 A→ECS 出站反向隧道，ECS 的 18083 通过只读 ss 检查确认为 127.0.0.1 监听；此检查不证明 B→ECS→A 的端到端链路。最终本机 CLI 报告为 20 项通过（19 项核心验收加透明中转捕获检查），保存在 explore/2026-11-20-app-tls/results-local.json。
 
-Windows PowerShell 未在本机执行；新 Windows/WSL 及完整 ECS 链路尚待各自真实报告。B 故障恢复由验收脚本主动重建自己结束的 SSH，不等于产品自动重连。A 外层故障、VPN/休眠、真实 HAI/AI 工具会话、生产权限/撤销与长期稳定性未验证。新的[验收说明](application-tls-validation.md)与 explore 实验 README 提供集中操作步骤；旧 11 PASS 不迁移为新架构证据。
+用户随后在收到最终 Windows 包与命令后回复“全部pass”，据此将 Windows 原生→ECS→Mac 应用双向 TLS mock 的集中验收记为通过（用户报告，未收到完整 result-windows JSON，不补造实际逐项数量/版本/计数）。[原始反馈与边界](../explore/2026-11-20-app-tls/windows-user-report.md)另行保存；本机报告不改写为 Windows 报告，WSL 仍未验证。
+
+B 故障恢复由验收脚本主动重建自己结束的 SSH，不等于产品自动重连。A 外层故障、VPN/休眠、真实 HAI/AI 工具会话、生产权限/撤销与长期稳定性未验证。新的[验收说明](application-tls-validation.md)与 explore 实验 README 提供集中操作步骤；旧 11 PASS 不迁移为新架构证据。
 
 ## 验证层次
 

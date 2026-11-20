@@ -63,3 +63,7 @@ WSL 内需自己的 Node22+、OpenSSH 和已核对的 known_hosts/可用 SSH ide
     node explore/2026-11-20-app-tls/run.mjs check --pair ./client --target hai-jump@ECS_HOST --identity /home/YOU/.ssh/hai_ecs_b --known-hosts /home/YOU/.ssh/known_hosts --out result-wsl.json
 
 Windows 与 WSL 分开运行并分别保存报告；运行重叠会影响端口/请求计数。独立报告才是相应平台的证据。
+
+## Windows 本轮反馈
+
+用户在收到最终包和 Windows 运行命令后回复“全部pass”，本轮 Windows→ECS→Mac 应用 TLS mock 集中验收记为通过（用户报告，完整 JSON 尚未收到）。见[反馈记录](windows-user-report.md)。WSL、A 外层故障、自动恢复、真实 HAI 与长期稳定性仍未验证；本机 results-local.json 保留原证据类型，不替代 Windows 报告。

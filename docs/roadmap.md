@@ -4,16 +4,18 @@
 
 日志已确认 Mac Remote Login 被 Disable Sharing Services 策略关闭。停止推进 Mac 系统登录稳定性、旧内层 SSH 生命周期与 Mac SSH 权限改造，不反复开启或换端口重建被关闭的功能。旧代码和验证记录保留；GUI、后台常驻、WSS 自建协议也暂不推进。
 
-新候选为应用双向 TLS，复用双方到 ECS 的出站 SSH，不需要 Mac SSH 服务或管理员权限。先做独立 mock 实验与一次 Windows/WSL 批量验证，再决定是否整合进主 CLI。详见[应用 TLS 验证](application-tls-validation.md)。
+新候选为应用双向 TLS，复用双方到 ECS 的出站 SSH，不需要 Mac SSH 服务或管理员权限。本机实验已通过；用户报告最终 Windows 批量脚本“全部pass”，Windows→ECS→Mac mock 链路验收通过，WSL 未验证。完整 Windows JSON 尚未收到，不补造逐项数据。详见[应用 TLS 验证](application-tls-validation.md)。
 
 | 优先级 | 工作 | 边界 |
 | --- | --- | --- |
-| 现在 | 本机真实 TLS、设备/服务身份拒绝、流式/取消/无重放、短期 B 交付包 | 固定 mock，不使用 HAI 身份 |
-| 接着 | Windows 与 WSL 集中验收：自有 B→ECS SSH 中断/主动重建、报告 | 各平台单独实测；A 外层故障未验证 |
-| 通过后评估 | 合并应用传输到 CLI、配对与设备撤销、A 出站故障恢复 | 不弱化旧安全检查；先确定需求与授权 |
+| 已完成本轮 | 本机真实 TLS 回归与短期 B 交付包；Windows 集中 mock 验收 | Windows 为用户报告，未收到完整 JSON；WSL 不标绿 |
+| 接着评估 | 独立应用传输整合主 CLI、版本化配对、前台 publish/connect/停止与安全交付 | 仍固定 mock，不弱化旧安全检查，不重新依赖 Mac 登录 |
+| 下一批 | 有界自动恢复、A/B 自有 SSH 故障注入；Windows/WSL 集中验收 | 本轮主动重建不是自动恢复；A 外层和 WSL 尚待验证 |
 | 授权后 | 最小真实 HAI 与实际 AI 工具会话 | 单独确认个人 ECS 路径与公司数据流转许可 |
 
-应用网络技术可行不等于公司允许该用途。Mac 休眠、VPN/网络恢复、长期可用性仍未验证。
+停止重复已通过的基础 models/SSE/取消/错误透传及旧系统 SSH 验证，保留回归即可。暂不做 GUI、WSS 重写、多用户或后台常驻；设备撤销/证书轮换按后续实际需求分批评估，不因一次 mock 通过就扩大为平台。
+
+应用网络技术可行不等于公司允许该用途。Mac 休眠、VPN/网络恢复、长期可用性仍未验证；WSL 可以在下次集中窗口验收，不阻止本机跨平台 Node 封装开发。
 
 ## 历史计划（确认上述新约束前，依赖 Mac SSH 的部分已暂停）
 

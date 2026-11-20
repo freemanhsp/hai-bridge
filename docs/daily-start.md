@@ -24,7 +24,7 @@ hai-bridge.cmd --version
 如果使用源码，在仓库目录只执行一次：
 
 ~~~sh
-node bin/hai-bridge.mjs setup-publisher \
+npm run setup:publisher -- \
   --server-config /ABS/PATH/原先成功的server.json
 ~~~
 
@@ -33,10 +33,20 @@ node bin/hai-bridge.mjs setup-publisher \
 每天先保持公司 VPN 与现有 hai proxy start 正常运行；再在仓库终端运行：
 
 ~~~sh
-node bin/hai-bridge.mjs publish-app
+npm run publish
 ~~~
 
-如果 Mac 也按安装说明安装了普通包，这条可进一步缩成 hai-bridge publish-app，可以从其他目录执行。HAI 和 publisher 各自前台运行；这个版本不添加后台服务、自启动或“关闭终端后继续运行”。正在运行的旧 publisher 可继续使用；不要同端口再启动第二份。
+源码快捷命令等价于 node bin/hai-bridge.mjs publish-app，不需要每次填写配置路径。默认已保存时不必重复 setup。若没有保存默认项，程序会提示先设置，不会自动猜测配对目录。如果 Mac 也按安装说明安装了普通包，可用 hai-bridge publish-app 从其他目录执行。HAI 和 publisher 各自前台运行；这个版本不添加后台服务、自启动或“关闭终端后继续运行”。正在运行的旧 publisher 可继续使用；不要同端口再启动第二份。源码更新后的提示要重启 publisher 才生效；旧安装包需要重新打包/安装才会包含这些改动。
+
+启动状态含义：
+
+- 本地服务已监听：A 的本地 TLS 服务可监听，尚未确认 ECS 转发。
+- 正在连接中继 (starting)：开始 SSH 连接尝试，不是成功确认；请保持终端打开。
+- 中继监听已建立 (forward_ready)：收到 OpenSSH 对当前 ECS→A 转发元组的成功诊断，可以启动 B；不代表 B 的 mTLS、HAI 认证或模型服务已经通过检查。
+- 连接中断/重试：明确显示等待秒数与次数；不重放模型请求。
+- 已停止本次本地服务：不宣称云端监听已经释放；异常断连的旧 SSH 会话仍可能需要单独排查。
+
+forward_ready 是尽力识别的 OpenSSH 诊断提示，不是安全校验或端到端健康检查。不支持该诊断格式的 OpenSSH 可能没有这条提示，程序不会猜测成功或因此结束连接。若长期只有 starting，在现有 ECS 管理终端运行 ss -ltnp 'sport = :18083' 检查预期监听，或在 B 运行已有配置的 doctor；不要因为命令未返回就判断卡死，也不要把进程存活当成就绪。Ctrl-C 停止本次程序。新状态提示已覆盖本机模拟测试；实际 ECS、Windows/WSL 的本次变更尚未验收。
 
 ## Windows：一次导入，日常只运行 start
 

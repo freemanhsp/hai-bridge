@@ -18,7 +18,11 @@ export function applicationSshArguments(config) {
     remotePort: config.role === 'publisher' ? endpointPort : relayPort, remoteHost: '127.0.0.1',
     sshPort: config.sshPort, identityFile: config.identityFile, knownHostsFile: config.knownHostsFile,
     sshConfigFile: process.platform === 'win32' ? 'NUL' : '/dev/null' });
-  if (config.role === 'publisher') args[args.indexOf('-L')] = '-R';
+  if (config.role === 'publisher') {
+    args[args.indexOf('-L')] = '-R';
+    // Capture forwarding confirmation privately; verbose output is never printed.
+    args.unshift('-v');
+  }
   return args;
 }
 
@@ -64,6 +68,9 @@ export async function runApplication(config, { signals = process, onEvent = () =
         current.once('close', () => { if (child === current) child = undefined; });
         return current;
       }, logger: () => {}, onEvent: event => onEvent({ ...event, transport: APPLICATION_TRANSPORT }),
+      ...(config.role === 'publisher' ? { forwardConfirmation:
+        'debug1: remote forward success for: listen 127.0.0.1:' + config.relayPort
+        + ', connect 127.0.0.1:' + config.appPort } : {}),
       ...(pause ? { pause } : {}), ...(now ? { now } : {}),
     });
     return code;

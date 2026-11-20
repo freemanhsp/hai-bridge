@@ -16,7 +16,7 @@
 
     hai-bridge publish-app --server-config .local/app/app-tls-NEW/server.json
 
-一条命令启动 A 应用 TLS 和出站反向 SSH。ECS 127.0.0.1:18083 → A 127.0.0.1:18081；应用只允许实际 bridge 的模型路径/方法。A 的 listening 事件仅证明本机应用就绪，不证明远端发布；使用 B 的 doctor/验收确认完整链路。
+一条命令启动 A 应用 TLS 和出站反向 SSH。ECS 127.0.0.1:18083 → A 127.0.0.1:18081；应用只允许实际 bridge 的模型路径/方法。A 的 listening 事件仅证明本机应用就绪，不证明远端发布；forward_ready 仅表示收到 OpenSSH 对预期远端监听的成功诊断，不证明 B→HAI 完整链路，仍需使用 B 的 doctor/验收。源码日常启动可在 setup-publisher 记住配置后运行 npm run publish，详见[日常启动](daily-start.md)。
 
 ## B 一次初始化及每次启动
 
@@ -44,7 +44,7 @@ publish-app/connect-app 在前台；Ctrl-C 仅停止本次 SSH 子进程和应�
 
 应用在重连期间保持本地监听；在途请求失败/取消，**不自动重放模型 POST**。网络恢复后新请求重新建立双向 TLS。CA、服务名、A/B证书指纹与证书用途都校验，不允许降级明文。证书问题使请求失败，不靠重启 SSH 来忽略验证。
 
---json 提供逐行安全生命周期状态，不含认证/密钥/正文。listening/starting 都不是端到端 ready。B SSH 连接活着而 A 外层失联时，单个请求可失败；A 恢复发布后新请求可重新连接，不强制重启 B SSH。
+--json 提供逐行安全生命周期状态，不含认证/密钥/正文；源码 npm 快捷命令使用 npm run --silent publish -- --json 避免 npm 自身标题混入 JSON。listening/starting/forward_ready 都不是端到端 ready。forward_ready 每次 SSH 连接最多一次，携带 forward_scope=relay_listener 和 end_to_end=not_checked；未知 OpenSSH 诊断格式不推断成功。原始 verbose stderr 只在进程内保留有界诊断尾部，不输出或落盘。B SSH 连接活着而 A 外层失联时，单个请求可失败；A 恢复发布后新请求可重新连接，不强制重启 B SSH。
 
 ## Windows/WSL 集中验收
 

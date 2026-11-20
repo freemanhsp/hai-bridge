@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
 import { EventEmitter, once } from 'node:events';
+import { formatApplicationEvent } from '../src/app-status.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
@@ -146,6 +147,7 @@ test('application SSH is isolated, non-root, loopback-only and preserves legacy 
   const { config } = await clientConfig('args');
   const a = applicationSshArguments(publisher), b = applicationSshArguments(config);
   assert.equal(a[a.indexOf('-R') + 1], '127.0.0.1:18083:127.0.0.1:18081');
+  assert.ok(a.includes('-v')); assert.equal(b.includes('-v'), false);
   assert.equal(b[b.indexOf('-L') + 1], '127.0.0.1:' + config.tunnelPort + ':127.0.0.1:18083');
   assert.ok(b.includes('StrictHostKeyChecking=yes') && b.includes('ForwardAgent=no'));
   assert.equal(b.some(value => value.includes('ProxyJump') || value.includes('ProxyCommand')), false);
@@ -233,7 +235,8 @@ test('publisher uses the same bounded retry controller and cleans TLS after user
 test('CLI advertises app commands and rejects missing/mock/extra options and legacy misuse before SSH', async () => {
   const { stdout } = await execute(process.execPath, [cli, '--help']);
   for (const command of ['init-app', 'init-app-client', 'publish-app', 'connect-app', 'check-app']) assert.ok(stdout.includes(command));
-  for (const args of [['init-app'], ['init-app', '--mock', '--upstream-url', 'http://127.0.0.1:6655'], ['publish-app'],
+  for (const args of [['init-app'], ['init-app', '--mock', '--upstream-url', 'http://127.0.0.1:6655'],
+    ['publish-app', '--profile-dir', path.join(temporary, 'missing-publisher-default')],
     ['connect-app', '--app-port', '18081'], ['check-app'], ['connect', '--tunnel-port', '18085']]) {
     await assert.rejects(execute(process.execPath, [cli, ...args]));
   }
@@ -241,6 +244,64 @@ test('CLI advertises app commands and rejects missing/mock/extra options and leg
   for (const args of [['connect'], ['codex'], ['probe', '--base-url', 'http://127.0.0.1:6655']]) {
     await assert.rejects(execute(process.execPath, [cli, ...args, '--client-config', file]));
   }
+});
+
+test('publisher emits relay-only confirmation from its expected OpenSSH forwarding tuple', async () => {
+  const config = await loadApplicationConfig(serverInfo.serverFile, 'publisher');
+  config.appPort = await unusedPort();
+  const signals = new EventEmitter(), events = [];
+  await runApplication(config, { signals, onEvent: value => events.push(value), spawnProcess(_command, args) {
+    assert.ok(args.includes('-v'));
+    const child = new EventEmitter(); child.stderr = new EventEmitter();
+    child.kill = () => { queueMicrotask(() => child.emit('close', null)); return true; };
+    queueMicrotask(() => {
+      child.stderr.emit('data', Buffer.from('PRIVATE-PUBLISHER-STDERR\n'
+        + 'debug1: remote forward success for: listen 127.0.0.1:' + config.relayPort
+        + ', connect 127.0.0.1:' + config.appPort + '\n'));
+      signals.emit('SIGINT');
+    });
+    return child;
+  } });
+  const ready = events.find(e => e.state === 'forward_ready');
+  assert.equal(ready.transport, 'app-tls'); assert.equal(ready.direction, 'publish');
+  assert.equal(ready.loopback_port, config.relayPort); assert.equal(ready.end_to_end, 'not_checked');
+  assert.equal(JSON.stringify(events).includes('PRIVATE-PUBLISHER-STDERR'), false);
+  await assertPortFree(config.appPort);
+});
+
+test('human status explains foreground startup, relay-only confirmation, retry and unverified remote release', () => {
+  const starting = formatApplicationEvent({ event: 'ssh', direction: 'publish', state: 'starting' });
+  for (const text of ['正在连接', '尚未确认', '前台常驻', 'Ctrl-C', 'doctor']) assert.ok(starting.includes(text));
+  const ready = formatApplicationEvent({ event: 'ssh', direction: 'publish', state: 'forward_ready', loopback_port: 18083 });
+  for (const text of ['中继监听已建立', '18083', '完整链路仍需 doctor']) assert.ok(ready.includes(text));
+  const listening = formatApplicationEvent({ event: 'application', role: 'publisher', mock: false, state: 'listening', loopback_port: 18081 });
+  assert.ok(listening.includes('18081') && listening.includes('尚未确认'));
+  const stopped = formatApplicationEvent({ event: 'application', role: 'publisher', state: 'stopped' });
+  assert.ok(stopped.includes('云端监听是否释放尚未核验'));
+  assert.ok(formatApplicationEvent({ event: 'ssh', direction: 'publish', state: 'retry_wait', delay_ms: 1000, retry: 1, max_retries: 5 }).includes('1/5'));
+  assert.ok(formatApplicationEvent({ event: 'ssh', direction: 'publish', state: 'failed', reason: 'forward_conflict', hint: 'safe hint' }).includes('safe hint'));
+});
+
+test('npm publisher shortcuts use saved private configuration and CLI text/JSON stay separate', { skip: process.platform === 'win32', timeout: 30000 }, async () => {
+  const root = path.join(temporary, 'shortcut-profile'), stubDir = path.join(temporary, 'shortcut-bin');
+  const sourceFile = path.join(path.dirname(serverInfo.serverFile), 'shortcut-server.json');
+  const source = JSON.parse(await fs.readFile(serverInfo.serverFile));
+  await fs.writeFile(sourceFile, JSON.stringify({ ...source, app_port: await unusedPort() }), { mode: 0o600 });
+  await fs.mkdir(stubDir, { mode: 0o700 });
+  await fs.writeFile(path.join(stubDir, 'ssh'), '#!/usr/bin/env node\n'
+    + 'const f = process.argv[process.argv.indexOf("-R") + 1].split(":");\n'
+    + 'process.stderr.write("PRIVATE-CLI-DIAGNOSTIC\\n" + "debug1: remote forward success for: listen " + f[0] + ":" + f[1] + ", connect " + f[2] + ":" + f[3] + "\\n");\n', { mode: 0o700 });
+  const npmOptions = { cwd: path.resolve('.'), env: { ...process.env, PATH: stubDir + path.delimiter + process.env.PATH } };
+  const { stdout: setup } = await execute(process.execPath, [process.env.npm_execpath, 'run', '--silent', 'setup:publisher', '--',
+    '--server-config', sourceFile, '--profile-dir', root], npmOptions);
+  assert.ok(setup.includes('npm run publish'));
+  const { stdout: human } = await execute(process.execPath, [process.env.npm_execpath, 'run', '--silent', 'publish', '--', '--profile-dir', root], npmOptions);
+  assert.ok(human.includes('中继监听已建立')); assert.equal(human.includes('PRIVATE-CLI-DIAGNOSTIC'), false);
+  const { stdout: json } = await execute(process.execPath, [process.env.npm_execpath, 'run', '--silent', 'publish', '--', '--profile-dir', root, '--json'], npmOptions);
+  const events = json.trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(events.filter(e => e.state === 'forward_ready').length, 1);
+  assert.equal(events.find(e => e.state === 'forward_ready').end_to_end, 'not_checked');
+  assert.equal(json.includes('PRIVATE-CLI-DIAGNOSTIC'), false);
 });
 
 test('private B delivery contains a clean runtime and only B identity; installed CLI works off-source', { timeout: 60000 }, async () => {

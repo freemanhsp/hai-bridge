@@ -57,7 +57,7 @@ export function sshFailureHint(reason) {
 
 export async function runTunnel(config, { logger = console.log, onEvent, executable = 'ssh', spawnProcess = spawn,
   signals = process, pause = (ms, signal) => wait(ms, undefined, { signal }), now = () => performance.now(),
-  buildArgs = sshArguments } = {}) {
+  buildArgs = sshArguments, forwardConfirmation } = {}) {
   const args = buildArgs(config);
   const maxRetries = config.maxRetries ?? 5;
   if (!Number.isInteger(maxRetries) || maxRetries < 0 || maxRetries > 100) throw new Error('Invalid maxRetries');
@@ -78,16 +78,26 @@ export async function runTunnel(config, { logger = console.log, onEvent, executa
       logger('Starting SSH ' + direction + ': ' + config.target + ' (loopback port ' + config.localPort + ')');
       const started = now();
       const result = await new Promise(resolve => {
-        let stderr = '';
+        let stderr = '', forwardConfirmed = false, finished = false;
+        const finish = result => { finished = true; resolve(result); };
         try {
           child = spawnProcess(executable, args, { stdio: ['ignore', 'ignore', 'pipe'], shell: false });
-        } catch { resolve({ code: 1, reason: 'spawn_error' }); return; }
+        } catch { finish({ code: 1, reason: 'spawn_error' }); return; }
         // Keep a bounded diagnostic tail only. Do not log server banners or raw stderr.
-        child.stderr?.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-16384); });
-        child.once('error', () => resolve({ code: 1, reason: 'spawn_error' }));
+        child.stderr?.on('data', chunk => {
+          stderr = (stderr + chunk.toString()).slice(-16384);
+          // Best-effort OpenSSH diagnostic, not a security check or end-to-end probe.
+          // Require the exact expected forwarding tuple and a complete line.
+          if (forwardConfirmation && !forwardConfirmed && !finished && !controller.signal.aborted
+              && stderr.split(/\r?\n/).slice(0, -1).includes(forwardConfirmation)) {
+            forwardConfirmed = true;
+            emit('forward_ready', { forward_scope: 'relay_listener', end_to_end: 'not_checked' });
+          }
+        });
+        child.once('error', () => finish({ code: 1, reason: 'spawn_error' }));
         child.once('close', code => {
           const exitCode = code ?? 255;
-          resolve({ code: exitCode, reason: classifySshFailure(stderr, exitCode) });
+          finish({ code: exitCode, reason: classifySshFailure(stderr, exitCode) });
         });
       });
       child = undefined;

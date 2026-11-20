@@ -43,6 +43,7 @@ function harness(scenarios) {
       if (scenario.stop) { signals.emit('SIGINT'); return; }
       clock += scenario.duration ?? 1;
       if (scenario.stderr) child.stderr.emit('data', Buffer.from(scenario.stderr));
+      for (const chunk of scenario.chunks ?? []) child.stderr.emit('data', Buffer.from(chunk));
       child.emit('close', scenario.code ?? 255);
     });
     return child;
@@ -163,6 +164,41 @@ test('fatal and exhausted events expose safe reasons and actionable hints, never
     spawnProcess: () => { throw new Error('SECRET-SPAWN-ERROR'); } }), /Cannot start SSH/);
   assert.deepEqual(events.map(event => event.state), ['starting', 'failed']);
   assert.equal(JSON.stringify(events).includes('SECRET-SPAWN-ERROR'), false);
+});
+
+test('forward confirmation requires a complete exact line, resets per attempt and never exports stderr', async () => {
+  const forwardConfirmation = 'debug1: remote forward success for: listen 127.0.0.1:18083, connect 127.0.0.1:18081';
+  const h = harness([{ chunks: ['PRIVATE-DIAGNOSTIC\n', forwardConfirmation.slice(0, 42),
+    forwardConfirmation.slice(42), '\r\n', forwardConfirmation + '\n'] },
+  { code: 0, stderr: forwardConfirmation + '\n' }]), events = [];
+  assert.equal(await runTunnel(CONFIG, { ...h.dependencies, forwardConfirmation, onEvent: e => events.push(e) }), 0);
+  const ready = events.filter(e => e.state === 'forward_ready');
+  assert.deepEqual(ready.map(e => e.attempt), [1, 2]);
+  assert.ok(ready.every(e => e.end_to_end === 'not_checked' && e.forward_scope === 'relay_listener'));
+  assert.equal((JSON.stringify(events) + h.logs.join('')).includes('PRIVATE-DIAGNOSTIC'), false);
+  for (const stderr of [forwardConfirmation, forwardConfirmation.replace('18081', '18082') + '\n',
+    'banner ' + forwardConfirmation + '\n', 'remote port forwarding failed for listen port 18083\n', '']) {
+    const missing = harness([{ code: 0, stderr }]), output = [];
+    await runTunnel(CONFIG, { ...missing.dependencies, forwardConfirmation, onEvent: e => output.push(e) });
+    assert.equal(output.some(e => e.state === 'forward_ready'), false);
+  }
+});
+
+test('forward diagnostic after cancellation or child exit cannot report readiness', async () => {
+  for (const end of ['cancel', 'close']) {
+    const signals = new EventEmitter(), events = [];
+    await runTunnel(CONFIG, { signals, logger: () => {}, forwardConfirmation: 'confirmation',
+      onEvent: e => events.push(e), spawnProcess() {
+        const child = new EventEmitter(); child.stderr = new EventEmitter();
+        child.kill = () => { child.emit('close', null); return true; };
+        queueMicrotask(() => {
+          if (end === 'cancel') signals.emit('SIGINT'); else child.emit('close', 0);
+          child.stderr.emit('data', Buffer.from('confirmation\n'));
+        });
+        return child;
+      } });
+    assert.equal(events.some(e => e.state === 'forward_ready'), false);
+  }
 });
 
 test('cancellation emits exactly one stopped event and never schedules another attempt', async () => {

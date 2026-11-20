@@ -15,6 +15,7 @@ import { runLifecycleChecks } from '../src/lifecycle.mjs';
 import { initializeApplicationPublisher, initializeApplicationClient, loadApplicationConfig, loadToolClient,
   DEFAULT_APP_SERVER_ROOT, DEFAULT_APP_CLIENT_CONFIG, APPLICATION_TRANSPORT } from '../src/app-config.mjs';
 import { runApplication } from '../src/app-runtime.mjs';
+import { formatApplicationEvent } from '../src/app-status.mjs';
 import { checkApplicationClient } from '../src/app-checks.mjs';
 import { tryHai } from '../src/hai-trial.mjs';
 import { setupClient, setupPublisher, defaultPublisherFile } from '../src/profiles.mjs';
@@ -65,6 +66,8 @@ Application TLS supports isolated --mock or explicit --hai; A/B use outbound ECS
 check-app stays MOCK ONLY. --hai needs a new pairing and keeps all HAI credentials on A.
 Application init needs OpenSSL on A only. B imports a private short-lived TLS pairing; never upload its keys.
 setup-client copies a real B profile privately to ~/.hai-bridge; setup-publisher remembers only A's config path.
+Source checkout: npm run setup:publisher -- --server-config PATH (once), then npm run publish.
+publish-app stays in foreground; forward_ready confirms only the relay listener, not B-to-HAI health.
 start owns B connection + one Codex invocation; exit closes only its resources. Stop old connect-app first.
 start keeps the project as Codex working directory; it does not install a background service.
 `;
@@ -109,7 +112,8 @@ async function main() {
       console.log('Run hai-bridge start from your project. Existing pairing expiry is unchanged; no HAI credentials were copied.');
     } else if (command === 'setup-publisher') {
       console.log('Private publisher default: ' + await setupPublisher(values['server-config'], values['profile-dir']));
-      console.log('Run publish-app when your previous publisher has stopped; setup did not start or replace it.');
+      console.log('配置路径已记住；日常启动：hai-bridge publish-app（源码目录：npm run publish）。');
+      console.log('设置未启动服务或替换旧实例；启动前请先停止同端口的旧 publisher。');
     } else {
       process.exitCode = await startSession({ clientFile: values['client-config'], profileDir: values['profile-dir'],
         project: values.project, userArgs }, { onEvent(event) {
@@ -128,9 +132,7 @@ async function main() {
       : command === 'connect-app' ? ['client-config', 'json']
       : command === 'try-hai' ? ['client-config', 'out', 'infer', 'json'] : ['client-config', 'out', 'interrupt-ssh', 'json'];
     if (userArgs.length || Object.keys(values).some(key => !allowed.includes(key))) throw new Error('Unsupported application command options');
-    const event = value => console.log(values.json ? JSON.stringify(value) :
-      (value.event === 'application' ? (value.mock ? 'MOCK' : 'HAI') + ' application ' + value.role + ': ' + value.state + (value.loopback_port ? ' (loopback ' + value.loopback_port + '; run doctor to verify)' : '')
-        : 'SSH ' + value.direction + ': ' + value.state + (value.reason ? ' (' + value.reason + ')' : '') + (value.hint ? '; ' + value.hint : '')));
+    const event = value => console.log(values.json ? JSON.stringify(value) : formatApplicationEvent(value));
     if (command === 'init-app' || command === 'init-app-client') {
       const appOptions = { mock: values.mock, hai: values.hai, upstreamUrl: values['upstream-url'], upstreamAuthFile: values['upstream-auth-file'], model: values.model,
         sshTarget: values['ssh-target'], identityFile: values['identity-file'],

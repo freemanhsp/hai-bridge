@@ -1,5 +1,7 @@
 # 最小真实 HAI 接入（0.4.0）
 
+本页保留0.4.0首次试用流程，不必重跑已通过的计费探针。当前0.5.0日常短命令/中文状态见[日常启动](daily-start.md)，凭据/期限见[凭据说明](credentials.md)，残留/连接问题见[应用排障](troubleshooting.md)。新增程序提示不等于自动续期或云端异常清理已完成。
+
 本批按用户明确确认可尝试的个人 Windows → 个人 ECS → 公司 Mac HAI 路径开发。此为用户确认的范围，不代表已独立取得或核验公司书面审批；不修改 VPN、MDM、Mac Remote Login、ECS 权限或公网端口。ECS 继续只做 SSH loopback 转发，不部署我们的服务，不终止应用 TLS。
 
     B 本地工具 → B HTTP → 双向 TLS / B 出站 SSH → ECS loopback
@@ -36,7 +38,7 @@ Mac 工作区生成私有包：
 
 ## 直接命令与实际工具
 
-0.5.0 已提供更短的日常入口：一次 setup-client 后在项目中 start；Mac 一次 setup-publisher 后 publish-app 无需长配置路径。见[日常单命令启动](daily-start.md)。下面的两终端方式仍可用，不要与 start 同时占用同一端口。
+0.5.0 已提供更短的日常入口：一次 setup-client 后在项目中 start；Mac 一次 setup-publisher 后 publish-app 无需长配置路径，源码可用npm run publish。下面的两终端方式仍可用，不要与 start 同时占用同一端口。旧安装包不会因源码提交自动更新；同版本的不同构建需按commit/哈希区分。
 
 源码已在 Git 中；也可按安装说明使用普通离线 .tgz，单独传 client-pair：
 

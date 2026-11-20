@@ -1,6 +1,8 @@
 # ECS 中继 CLI
 
-历史实现：本机管理策略已关闭 Mac Remote Login，此内层 SSH 方案暂停，不应重新开启系统登录来执行本页步骤。新验证入口见[应用双向 TLS](application-tls-validation.md)。
+历史实现：本机管理策略已关闭 Mac Remote Login，此内层 SSH 方案暂停，不应重新开启系统登录来执行本页步骤。当前真实使用见[日常启动](daily-start.md)，mock见[应用双向 TLS](application-tls-validation.md)。本页后续的“待验证/待授权”是当时旧路径状态，不覆盖新app-tls的独立报告。
+
+特别注意：node bin/hai-bridge.mjs publish 是旧Mac SSH22转发；npm run publish 是源码快捷脚本，实际执行publish-app（应用TLS），两者不同。中文forward_ready属于新版publisher提示，不是本页旧CLI的新能力。
 
 这是手工双层 SSH 的前台封装，不是新的代理协议。当前跨 ECS 验证仅使用模拟上游；真实 HAI 中继要先确认该具体网络路径的授权。
 

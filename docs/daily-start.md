@@ -2,6 +2,8 @@
 
 复用已经成功的真实 HAI 配对，不重新开放 Mac Remote Login，不在 ECS 安装应用，不修改 VPN/安全组/全局 Codex 配置。B 的工具与工作目录仍在 B；只有模型请求通过现有 B→ECS→A→HAI 链路。
 
+本页描述当前源码日常入口；证书/包区别见[凭据说明](credentials.md)，连接或残留问题见[应用排障](troubleshooting.md)。近期[开发任务](next-development.md)将补生命周期与分层离线诊断，尚无自动续期/后台管理功能。
+
 ## 需要安装什么
 
 两端需要 Node.js 22+、npm 和 OpenSSH Client。B 另需预先安装 Codex CLI；本仓库沿用已核对的 Codex 0.163.0 参数，其他版本尚未确认兼容。此次尝试访问官方 Codex 文档返回403，未据此声称核验最新版本。A 继续使用现有 HAI CLI、VPN 和认证；日常启动器不会代替你启动 HAI 或登录公司账号。

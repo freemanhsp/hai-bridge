@@ -19,7 +19,7 @@
 - B/A 与 ECS 端口均限定 loopback，不自动修改安全组、sshd、VPN、MDM、known_hosts 或 PowerShell 执行策略。
 - 固定合成上游与公开 mock token，环境 HAI 认证不读取；无真实模型调用或费用。请求不重试、不重放。
 
-独立历史实验放在源码 explore/2026-11-20-app-tls，其 prepare.mjs 验证包和 Windows 用户报告保留不变。0.3.0 随后增加正式[应用 CLI](application-cli.md)，新版配对与控制器需要新的验收结果；不能直接继承旧实验通过记录。没有 GUI、自启动、生产登记/撤销、无限重连或真实 HAI 接入。
+独立历史实验放在源码 explore/2026-11-20-app-tls，其 prepare.mjs 验证包和 Windows 用户报告保留不变。0.3.0 随后增加正式[应用 CLI](application-cli.md)，新版配对与控制器需要新的验收结果；不能直接继承旧实验通过记录。此mock实验不包含GUI、自启动、生产登记/撤销、无限重连或真实HAI；后续真实0.4.0与日常0.5.0能力见独立文档。
 
 ## 集中验收
 
@@ -35,4 +35,4 @@ Windows：包内 windows-checks.ps1 一次运行，自动建立、自行中断�
 
 本机真实 TLS/透明 TCP 与默认回归通过；历史独立实验 Windows 反馈为“全部pass”，该历史记录未附完整 JSON。随后正式 0.3.0 CLI 交付后，用户另提供 [Windows 完整 JSON](../explore/2026-11-20-app-cli/results-windows-user.json)：21/21 pass，包含正式 B 控制器的受控 SSH 中断、自动恢复、无重放与端口释放。两批证据分别保存，不复用旧 11 PASS，不将本机报告标为 Windows 报告；详细证据见[验证记录](validation.md)。
 
-WSL、A 外层故障恢复、VPN/休眠恢复、真实 HAI、实际 AI 工具会话、长期设备撤销与稳定性仍需独立证明。Windows 基础协议与 B 受控故障自动恢复验收可以收尾，下一步优先准备 A 外层恢复集中验收，WSL 单独记录；不因此开始真实 HAI 调用。
+本页mock证据未验证真实HAI；随后Windows0.4.0真实调用已有独立5/5用户报告，不与本页结果合并。WSL、A外层异常恢复、VPN/休眠、实际AI工具会话、设备撤销及长期稳定性仍未验证。停止重复Windows基础mock协议，近期先补[本机生命周期/诊断](next-development.md)，再合并A外层与WSL检查窗口；不因更新文档重复计费调用。

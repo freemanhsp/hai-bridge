@@ -1,0 +1,33 @@
+{
+  "version": "0.5.0",
+  "source_commit": "7236950",
+  "date": "2026-11-21",
+  "platform": "darwin",
+  "node": "24.14.0",
+  "evidence": "assistant-final-local-automated-summary-synthetic-services-and-process-stubs",
+  "summary_not_raw_test_output": true,
+  "status": "pass",
+  "test": { "total": 137, "passed": 137, "failed": 0, "new_publisher_tests": 5 },
+  "cli_syntax_check": "pass",
+  "src_bin_module_syntax": "pass",
+  "real_model_requests": 0,
+  "final_regression_real_ssh": "not_called",
+  "separate_pre_fix_observation": {
+    "issue": "missing-default-test-read-personal-publisher-profile",
+    "owned_test_publisher": "stopped_with_sigterm",
+    "relay_listener_after_stop": "read_only_check_absent",
+    "configuration_modified": false,
+    "not_abnormal_recovery_acceptance": true
+  },
+  "not_checked": [
+    "new_publisher_hints_real_end_to_end",
+    "Windows_0.5.0_daily_launcher",
+    "Windows_Ctrl_C_real_process_tree",
+    "WSL_Linux_other_macOS_B",
+    "real_AI_tool_task",
+    "A_abnormal_outer_link_recovery",
+    "parent_hard_kill_cleanup",
+    "VPN_sleep_resume",
+    "long_term_stability"
+  ]
+}

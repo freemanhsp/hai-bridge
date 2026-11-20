@@ -2,6 +2,8 @@
 
 本页描述隔离的 mock 模式。0.4.0 另增显式 --hai 的[真实接入](real-hai.md)，不能将旧 mock 配对改成真实模式。本页命令固定合成上游，不读 HAI/SSO、不计费，不用于实际 AI 工具会话。A/B 均只运行 ECS 出站 SSH；云服务器只保留现有 SSH 服务与 loopback 转发，不部署我们的程序，不开启 Mac Remote Login。
 
+0.5.0日常快捷命令另见[日常启动](daily-start.md)。forward_ready仅是远端监听诊断，不代表完整就绪或异常残留已修复；当前问题检查见[排障](troubleshooting.md)，待实现项见[开发交接](next-development.md)。
+
 ## A 一次初始化
 
 需要 Node22+、OpenSSH，以及支持 -addext 的 OpenSSL。以下命令从当前目录写入新的 .local/app/app-tls-*，不会覆盖已有配对：

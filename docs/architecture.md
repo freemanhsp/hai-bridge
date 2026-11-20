@@ -1,52 +1,52 @@
-# MVP 架构
+# HAI Bridge 架构与边界
 
-2026-11-20 新约束：管理策略明确关闭本机 Remote Login，不修改系统登录或安全策略。当前路径为双方出站 SSH 至 ECS、端到端应用双向 TLS；0.4.0 提供[显式真实 HAI](real-hai.md)，保留隔离的[应用 mock](application-cli.md)。
+## 当前路径（0.5.0，2026-11-21）
 
-    B 工具 → B HTTP loopback → 应用 mTLS密文 / B出站SSH → ECS loopback
-      → A出站反向SSH → A TLS bridge → A本地HAI → 公司平台
+    B 本地 AI 工具 → B HTTP loopback → 应用 mTLS / B 出站 SSH
+      → ECS loopback → A 出站反向 SSH → A TLS bridge
+      → A 本地已认证 HAI → 公司平台
 
-两条SSH均终止于ECS，A不运行SSH服务，也不提供远程命令/文件访问。ECS只转发应用TLS密文，可观察连接元数据并中断流量；不能据此免除公司数据流转许可。A/B固定校验CA、服务名及对端证书指纹，7天身份；B另持独立随机bridge token，HAI/SSO始终只在A。真实与mock服务名/身份隔离，真实认证逐请求从A明确文件读取，不接受环境覆盖；仅开放OpenAI模型API白名单。
+B 的项目读取、命令和工具执行仍发生在 B；可能进入模型上下文的文件内容与命令输出经 A 转发。A 不提供远程命令或文件服务。Mac Remote Login 已被管理策略关闭，本方案不重新开启它，也不安装替代 sshd。
 
-Windows mock CLI完整用户报告21/21通过；Mac本机真实mTLS→HAI一次流式调用成功，随后Windows真实B→ECS→A→HAI完整用户报告5/5通过。WSL、实际工具会话与长期恢复仍未验证，见[验证记录](validation.md)。
+两条 SSH 都终止于 ECS，但应用 TLS 端点在 A/B。ECS 仅运行现有 SSH 转发，不部署 Bridge、存储 HAI 凭据或终止应用 TLS；仍能看到连接元数据、大小/时序并中断流量。加密不免除数据流转许可。用户已确认可尝试个人 Windows→个人 ECS→公司 Mac 的路径；不推断适用于其他用户、设备或用途。
 
-## 历史系统 SSH 架构（不继续部署）
+默认端口：A TLS18081、ECS loopback18083、B HTTP18084、B TLS隧道18085，HAI 在 A loopback6655。程序仅申请 loopback 转发，实际地址和权限仍由 ECS SSH 策略约束，不自动修改安全组、sshd、VPN、MDM 或信任文件。
 
-下述依赖Mac SSH服务的架构和配置行为仅保留作历史参考，不应重新开启被关闭的功能。
+## 职责与启动
 
-```mermaid
-flowchart LR
-  tool[B: Codex] --> local[B: 127.0.0.1:16655]
-  local -->|SSH 加密连接| bridge[A: 127.0.0.1:16656]
-  bridge -->|A 的本地 HAI key| hai[A: 127.0.0.1:6655]
-  hai --> platform[Hyperspace / SAP AI Core]
-```
+- publish-app：A TLS 服务与 A→ECS 反向 SSH，前台独立运行；源码快捷入口 npm run publish。
+- connect-app：B HTTP 适配器与 B→ECS SSH，与 AI agent 解耦；目前需自己的显式配置或旧默认路径。
+- start：B 的便利组合；等待固定 mTLS、健康与模型列表成功，再启动一次 Codex，退出清理本次资源。不是通用多 agent 启动器。
+- setup-publisher：只保存原 server.json 的绝对路径；setup-client：私下复制已有 B 配对到稳定个人目录。均不启动服务、不续期、不接管旧实例。
 
-## 凭证与请求
+start 保持 B 项目 cwd，不改全局工具配置。publisher 不由某次 B 会话管理；A 必须醒着、联网并保持前台程序与 HAI 正常运行。没有后台、自启动或远程接管功能。
 
-初始化时生成随机桥接 token。B 使用该 token，桥接校验通过后替换请求中的 `Authorization`，使用 A 的 HAI key 访问固定的本机上游。公司登录及 OAuth 刷新由 HAI 负责。桥接只读取 Codex auth 文件中的 `OPENAI_API_KEY`。
+## 认证与凭据
 
-token 文件和 HAI key 在每次请求时读取，以支持已有文件的凭证轮换。环境变量覆盖值不会热更新，需要重新启动进程。配对文件不包含 HAI key 或 SSO 令牌。
+当前 v1 为独立真实/mock CA、服务名与配对标记，TLS至少1.3；A 校验 CA、客户端证书用途与固定 B 整证书指纹，B 校验 CA、服务名、用途与固定 A 指纹。CA/A/B 证书均约7天，生成后销毁 CA 签名私钥。真实 B 另持随机 bridge token，不能用公开 mock token。
 
-SSH 和桥接 token 提供 MVP 的入口认证。当前 token 代表一个桥接实例，尚无逐用户权限、设备绑定或单独撤销某个 B 的功能。持有该 token 且能通过 SSH 连接的人，可以使用 A 的 HAI 权限。
+HAI/SSO 只在 A；每次真实请求读取 A 明确 auth.json 的 OPENAI_API_KEY 并替换认证，不接受 HAI_UPSTREAM_API_KEY/HAI_BRIDGE_TOKEN 的认证来源覆盖。公司认证刷新仍由 HAI 负责。B 的应用私钥、bridge token 与 B 自己的 ECS SSH 私钥不是 HAI 登录凭据。
 
-## HTTP 行为
+单一 B 指纹和共享实例 token 不是设备登记平台。复制私钥会克隆同一身份，不证明物理设备；没有独立设备撤销、自动续期或过期恢复。详情与迁移边界见[凭据说明](credentials.md)。
 
-上游固定为 HTTP loopback origin，监听也限定为 loopback。可选 provider 为 OpenAI、LiteLLM、Anthropic、Gemini，默认只启用 OpenAI。每个 provider 的请求路径和方法均有明确列表，无法将桥接用作任意 URL 代理。
+## 请求与诊断
 
-请求和回复以字节流转发，不解析或重写提示词、工具调用、JSON 或 SSE。Node stream 处理背压；请求体大小有上限。连接级 hop-by-hop 头被移除，`User-Agent` 等工具信息保留，`Host` 改为 HAI 上游。上游认证头及 cookie 不返回 B。
+当前真实入口仅启用 OpenAI 白名单：模型列表、Responses、Chat Completions 和 embeddings 等已列明路径/方法。底层虽有其他 provider 路由代码，不代表当前真实模式启用或 HAI/agent 已兼容。其他协议应独立验收；不提供任意 URL 代理或通用协议转换。
 
-HAI 的 HTTP 状态、错误正文、`Retry-After` 与关联 ID 原样传递。桥接本身不跟随重定向，不自动重试模型请求。连接中断后恢复 SSH，并不意味着已经发送的请求会被重放。客户端取消或断开时，桥接关闭对应上游连接。
+正文、工具调用、JSON/SSE 以字节流转发，不解析或重写模型内容。背压、请求体上限、hop-by-hop 头清理与认证替换在 bridge 层处理；上游状态、错误正文、Retry-After 和关联 ID 传给 B。错误正文透传给调用方不等于写入日志。桥接不跟随重定向、不自动重试/重放模型 POST；取消/断开关闭对应上游连接。AI agent 自身重试属于独立行为。
 
-`GET /healthz` 需要桥接 token，仅表示桥接可用。`doctor` 还读取配置上游的模型列表；模拟上游明确返回 `mock: true`、`hai: not_checked`。真实上游的模型列表成功也不等于实际生成已经通过。
+已有安全生命周期事件、doctor、实验报告和请求 ID；真实 publisher 尚未接入完整请求元数据日志/轮转/report 导出层。底层 logger 钩子不能视为已经具备日常监控。规划中的统计应不缓存正文，不从字节数推算真实计费。
 
-日志只记录方法、允许的路径、状态、耗时和随机请求 ID。查询参数、认证头、提示词和模型回复不写日志。
+listening 只表示本地服务启动；starting 是 SSH 尝试；forward_ready 是尽力匹配 OpenSSH 预期远端监听成功诊断，不是安全决策或 B→HAI 健康保证。doctor 的健康/模型 GET 成功也不等于实际生成或完整工具任务通过。
 
-## 当前证据与未验证项
+## 生命周期与残留
 
-初始探索已在 Mac 的 `hai 1.4.9` 上完成真实 Responses / SSE 中转。这个结果不等于已经证明后台不存在任何设备或用户策略。源码仓库未获得访问。旧手工 Windows 经 ECS 的内层 SSH 与模拟协议已有成功输出/用户报告；新 CLI、WSL 和真实跨设备 HAI 仍需分别验证。
+正常 Ctrl-C/TERM 请求结束本次自有 SSH 并关闭服务，应用层对自有 SSH 有2秒强杀兜底；不结束未知进程。现有 finally 异常路径和计时器/子进程竞争仍需专项补齐，不能承诺任意退出都回收。
 
-用户说明已经针对个人设备和特殊场景与 HAI 团队对齐，项目以该具体授权范围进行 MVP 验证，不推断此授权适用于其他设备、用户或用途。
+Node 被强杀可能留下本地 SSH；客户端/网络失联可能使远端 sshd 暂保留反向监听。客户端 ServerAliveInterval15/CountMax3 不保证 ECS45秒释放，服务端心跳也不能识别仍在线响应的孤儿 SSH。已观察到一次旧远端会话占用；精确触发原因未确定，0.5.0不豁免此风险。状态提示不等于清理问题已修复。见[排障](troubleshooting.md)及[下一批任务](next-development.md)。
 
-后续可在当前认证入口增加用户身份、设备登记和授权撤销，无需改变 HAI 或模型协议。
+## 证据与历史
 
-ECS 模式将 Mac 的 SSH 22 反向发布到中继 loopback，B 的内层 SSH 通过该入口终止于 Mac，不将明文 HAI HTTP 发布给中继。[中继 CLI](relay-cli.md)只管理前台 SSH 生命周期，不替代服务端权限约束，也不扩大已对齐的真实数据流转授权。
+本机137/137回归通过；Windows mock21/21和0.4.0真实模型列表/流式5/5为独立用户报告。0.5.0启动器、WSL/Linux/其他Mac-B、真实工具任务、A异常恢复与长期稳定性未验收；新提示的完整真实冒烟亦未完成。详见[验证记录](validation.md)。
+
+旧路径为 B 内层 SSH 经 ECS 终止于 Mac SSH22，再访问 Mac bridge；其代码/实验保留但不继续部署。旧 token 环境覆盖、多 provider 配置和 Mac 系统登录步骤不能套用到当前真实 app-tls。历史见[中继 CLI](relay-cli.md)、[旧配置](configuration.md)与[探索资产](../explore/README.md)。

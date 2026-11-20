@@ -1,8 +1,10 @@
 # HAI Bridge
 
-2026-11-21 更新：0.5.0 新增[日常单命令启动](docs/daily-start.md)：Mac 记住配置后 publish-app；B 导入已有真实配对后 start 自动连接并启动一次 Codex，退出清理自有连接。沿用0.4.0的[最小真实接入](docs/real-hai.md)与隔离 mock。Windows 已收到mock21/21及0.4.0真实HAI流式调用5/5完整用户报告；新单命令封装、WSL、实际工具任务与长期恢复仍另行验证。Mac 管理策略已关闭 Remote Login，不再推进依赖系统登录的链路；无需云端部署我们的程序。以下旧系统 SSH CLI 保留为历史实现，不应为了使用它重新开启被策略关闭的功能。
+2026-11-21 更新：当前源码版本0.5.0，新增 Mac 的 npm run publish 快捷启动与中文状态提示；forward_ready 仅确认中继监听，不代表完整链路就绪。本机回归137/137通过。Windows mock21/21及0.4.0真实HAI流式调用5/5为独立用户报告；0.5.0单命令封装、WSL、实际工具任务与异常恢复仍待验收。下一批优先补[进程清理与分层诊断](docs/next-development.md)，不将残留问题视为已修复。
 
 让 B 上的 AI 工具经 SSH 访问 A 上已经认证的 HAI 代理。当前目标是 Mac A + Windows 11 原生 / WSL B，先验证 Codex 的完整请求与流式返回。
+
+Mac 管理策略已关闭 Remote Login；当前不需要 Mac SSH 服务，也不在 ECS 部署 Bridge 应用。不要为了执行历史方案重新开启系统登录。
 
 ```text
 B 本地工具 → B HTTP → 双向 TLS / ECS 出站 SSH 中转 → A TLS bridge → A:6655 HAI → 公司平台
@@ -10,9 +12,23 @@ B 本地工具 → B HTTP → 双向 TLS / ECS 出站 SSH 中转 → A TLS bridg
 
 HAI key 和公司登录凭证留在 A。B 的私有配对含独立桥接 token 与 B 短期 TLS 身份，不能上传 GitHub。运行需要 Node.js 22+，没有第三方 npm 依赖。
 
+## Mac 日常启动
+
+源码目录中，一次记住已有真实配置，再运行短命令：
+
+~~~sh
+npm run setup:publisher -- --server-config /ABS/PATH/已有server.json
+# 以后只需这一条；同端口不要同时运行两份 publisher
+npm run publish
+~~~
+
+已保存默认项就不必重复 setup。保留原 hai proxy start、公司 VPN 和认证正常运行；publisher 前台终端需保持打开，Ctrl-C 停止。更新源码后重启才看到新提示，升级程序不会延长配对的约7天期限。详细步骤见[日常启动](docs/daily-start.md)，凭据说明见[凭据与设备信任](docs/credentials.md)。
+
 ## 安装与版本
 
 源码工作区运行 npm run pack 可生成本地 .tgz 包和 SHA-256，方便将同一份代码交付其他设备。没有发布到 npm；安装包不含 .local、mydocs、explore 或凭证。
+
+既有安装包不会自动包含新提交；同为0.5.0也可能是不同构建。更新交付时从干净提交重新打包并核对 commit/哈希，本轮文档更新不代表已经生成或安装新包。
 
 ~~~sh
 npm install --global --offline --ignore-scripts --no-audit --no-fund ./hai-bridge-0.5.0.tgz
@@ -60,7 +76,7 @@ node bin/hai-bridge.mjs serve
 
 Mac 需要已经启用远程登录，并配置 B 的 SSH 公钥。先在 B 手工执行一次 `ssh user@mac-host`，核对主机指纹并确认登录成功。工具保留 SSH 的主机密钥校验，使用 SSH agent / 公钥认证，不支持交互式密码重连。
 
-## 在 B 上连接
+### 在 B 上连接（历史）
 
 Windows PowerShell 和 WSL 使用相同命令。先确认 `node --version` 和 `ssh -V` 可用，并将项目及配对文件放到 B 上。
 
@@ -89,11 +105,11 @@ WSL 中使用 WSL 自己的 Node.js、SSH 和 Codex；直接在 WSL 中建立隧
 
 同一局域网使用可到达的 Mac 地址。异地使用获准的网络、VPN 或已有 SSH 跳板配置；工具本身不提供公网打洞。
 
-## ECS 中继封装
+### ECS 中继封装（历史）
 
 若已完成双层 SSH 的公钥与主机指纹准备，可以用新 CLI 替代手写 SSH：Mac `init-publisher` / `publish`，B `init-relay-client` / `connect`。两端保持前台，Ctrl-C 停止本命令拥有的 SSH；连接故障有有限重试，不重放模型请求。B 使用独立 SSH 配置和两个身份，不修改全局 SSH config。
 
-当前先用 `--mock` 验证：B 18084→Mac 18080，内层 SSH 经 ECS 18083 终止于 Mac。真实 HAI 经个人 ECS 的具体授权尚未确认。新命令的本机测试及 Mac publisher 已通过，Windows/WSL 封装端到端与实际自动恢复仍待验证；旧手工 Windows 模拟链路的 11 PASS 不替代这轮验收。
+当前先用 `--mock` 验证：B 18084→Mac 18080，内层 SSH 经 ECS 18083 终止于 Mac。真实 HAI 经个人 ECS 的具体授权当时尚未确认。旧命令的本机测试及 Mac publisher 已通过，Windows/WSL 封装端到端与实际自动恢复仍待验证；旧手工 Windows 模拟链路的 11 PASS 不替代这轮验收。
 
 完整初始化、启动和迁移说明见 [中继 CLI](docs/relay-cli.md)，下一轮集中验收及后续阶段见 [推进计划](docs/roadmap.md)。
 
@@ -111,21 +127,11 @@ npm run dev
 
 ## 验证与更多说明
 
-暂时不方便连接另一台设备时，可以先运行本机自检：
-
-~~~sh
-node bin/hai-bridge.mjs doctor --offline --client-config .local/relay-mock.json
-node bin/hai-bridge.mjs doctor --offline --publisher-config .local/publisher.json
-~~~
-
-两条分别用于 B 和 Mac，不需要一起运行。加 --json 可输出结构化报告；不登录 SSH、不调用 HAI、不修改信任或读取私钥内容。它会短暂检查 B 本地端口绑定，端口已占用只显示警告。详见 [离线自检](docs/offline-checks.md)。
-
-publish/connect 失败时提供 Next 排障提示；加 --json 可输出逐行安全状态事件。starting 只表示启动尝试，不表示就绪；实际连通仍以在线 doctor 为准。
+源码回归只用本地模拟环境，不发送真实模型请求：
 
 ```sh
 npm test
-node bin/hai-bridge.mjs probe
-node bin/hai-bridge.mjs probe --infer
+npm run check
 ```
 
 `probe` 只读取健康状态和模型列表；`probe --infer` 会发送一个极短的流式生成请求，默认使用 `gpt-6-luna`。连接真实上游时会计费；连接本机 `dev` 环境时返回合成输出，不产生模型费用。
@@ -133,6 +139,12 @@ node bin/hai-bridge.mjs probe --infer
 - [架构与边界](docs/architecture.md)
 - [配置与排障](docs/configuration.md)
 - [验证记录](docs/validation.md)
+- [当前应用链路排障](docs/troubleshooting.md)
+- [凭据与设备信任](docs/credentials.md)
+- [后续推进顺序](docs/roadmap.md)
+- [下一次开发任务](docs/next-development.md)
 - [最初的可行性探索](explore/2026-11-19-forwarding/README.md)
+
+当前应用链路的检查见[排障说明](docs/troubleshooting.md)；旧doctor --offline仅用于历史SSH/dev配置。完整文档见[索引](docs/README.md)。
 
 当前实现适用于本次已对齐范围内的 MVP 验证。逐用户身份认证、设备登记、图形界面和部署管理尚未实现；项目管理方式等待后续约定。

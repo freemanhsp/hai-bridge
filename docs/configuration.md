@@ -1,6 +1,20 @@
 # 配置与排障
 
-本页描述原有 SSH MVP。Mac Remote Login 已被管理策略关闭；不按旧排障步骤重新开启被关闭的功能。当前应用级 mock 使用独立配对/脚本，见[应用 TLS 验证](application-tls-validation.md)。
+本页先说明当前app-tls配置边界；后半保留原有SSH MVP，不按旧排障步骤重新开启被管理策略关闭的Mac Remote Login。真实使用见[日常启动](daily-start.md)、[应用排障](troubleshooting.md)与[凭据说明](credentials.md)。
+
+## 当前应用配置（0.5.0）
+
+server.json / client.json 都有schema_version=1、transport=app-tls、mode=mock或hai、role=publisher或client。字段/角色/配对不符拒绝；不要给旧SSH JSON添加transport就当作迁移。
+
+共同配置为ssh_target（非root ECS账号）、ssh_port、identity_file、known_hosts_file、relay_port、reconnect/max_retries与tls_dir。publisher另有app_port，真实publisher明确指定loopback upstream_url/upstream_auth_file；client另有local_port/tunnel_port，不能存A的上游认证。A/B必须使用同一中继端口与匹配私有身份；SSH信任先通过可信渠道核对。
+
+相对身份/信任/TLS路径按配置文件目录解析；setup-publisher只记录A绝对配置路径，setup-client复制B配对到个人目录而保留SSH绝对路径。默认已存在则拒绝覆盖，程序升级不续期、不改信任或启动进程。
+
+真实app-tls不接受HAI_UPSTREAM_API_KEY/HAI_BRIDGE_TOKEN作为认证来源覆盖，不支持--base-url覆盖或旧doctor --offline。日常start默认用个人client.json；手动connect-app/doctor须显式指向其配置，不假定它们也使用个人默认项。具体命令见日常说明；新的应用离线诊断仍在规划。
+
+## 以下是历史系统SSH配置
+
+下面的环境覆盖、多provider可选项、16656端口和Mac SSH22发布只属于旧实现，不代表当前真实app-tls开放这些能力。
 
 ## Mac 配置
 

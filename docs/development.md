@@ -1,5 +1,7 @@
 # 纯本机开发模式
 
+本页dev为纯本机合成环境，不验证当前真实应用链路。2026-11-21默认回归137/137通过，当前源码交接见[下一次开发任务](next-development.md)；真实跨设备用户报告另见[验证记录](validation.md)。
+
 独立的[应用 TLS mock 实验](application-tls-validation.md)另需 OpenSSL（支持 -addext）和 tar 来生成短期测试身份；默认 npm test 已包含该实验回归，因此运行完整源码测试也需要它们。Windows 交付包仅运行已配对的 Node/OpenSSH 探针，不要求 Windows 安装 OpenSSL。
 
 只需 Node.js 22+，不用准备 SSH、Windows 设备、VPN 或 HAI 登录：
@@ -54,4 +56,6 @@ POST 只处理丢弃的输入及固定合成输出，不生成真实回复，不
 
 dev --json 输出逐行 dev 事件：ready 包含本机 origin、client_config 路径和 temporary 标记，停止后输出 stopped。ready 仅证明本次两个本机监听已启动，不代表 SSH 或 HAI 就绪。错误只输出安全原因/提示，不打印原始异常或凭证。
 
-本机自动化覆盖启动/协议/配置隔离、错误与取消、失败回收、原监听保护、停止中断及 JSON CLI。真实 Mac 新 CLI 冒烟已通过；Windows/WSL 实机、跨设备自动恢复和真实 HAI 中继仍未验证。历史 explore 资产保持不变。
+本机自动化覆盖启动/协议/配置隔离、错误与取消、失败回收、原监听保护、停止中断及 JSON CLI。实际 Mac dev CLI 冒烟已通过；这些dev结果不证明Windows/WSL、跨设备恢复或真实HAI。独立Windows app-tls真实0.4.0报告5/5与本页dev证据不同；历史explore资产保持不变。
+
+新增测试使用独立临时profile-dir/端口和SSH替身；尤其“缺少默认publisher”测试不能依赖用户尚未setup，也不能读取个人默认项启动真实SSH。所有回归不应访问真实HAI；下一批加强隔离/清理，见开发交接。

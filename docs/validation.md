@@ -1,5 +1,15 @@
 # 验证记录
 
+## 最新状态：publisher体验与隔离修正（2026-11-21）
+
+代码提交7236950，版本号仍0.5.0。npm test最终137/137通过，npm run check与src/bin模块语法检查通过。新增5项回归：OpenSSH成功诊断分片/CRLF/重复/错误元组与每次重连独立确认、停止后不误报、publisher传递正确转发元组、中文状态边界、npm快捷入口与文本/JSON隔离。[安全汇总](../explore/2026-11-21-publisher/results-local.json)明确是助手整理的本机模拟结果，不是原始stdout或Windows实测。
+
+另修正旧缺省publisher错误测试：显式使用不存在的临时profile-dir，不能依赖用户没有保存默认项。提交前首轮重跑发现该测试读到用户个人默认项并误启动测试自有publisher；已对确认归属的测试子进程发送TERM，随后只读ECS ss未见18083监听，没有HAI/模型请求、云端配置或用户其他进程修改。隔离修正后最终回归使用本地替身，不再启动实际SSH；该次正常清理观察不证明异常断网/强杀回收。
+
+旧端口冲突的用户root输出确认是旧sshd反向监听；用户随后提供空监听结果，记录为该次占用清除。用户再次启动后的listening/starting仅表示前台尝试，没有完整新版forward_ready/真实工具任务报告，不标记其验收通过。无法从旧会话元数据断言具体因某次开发、MDM、休眠或版本造成。
+
+当前Windows mock21/21与0.4.0真实HAI5/5仍有效，分别保留原报告；0.5.0启动器/新版提示、Windows真实Ctrl-C进程树、WSL/Linux/macOS-B、A异常恢复、VPN/休眠和长期稳定性仍未验收。状态提示不是异常清理修复，后续见[开发交接](next-development.md)。下文按批次保留历史，不把当时前台运行描述当作现在的进程状态。
+
 ## 日常启动 0.5.0（2026-11-21）
 
 新增16项默认回归后，本机132/132通过；npm run check、36个src/bin/scripts/test模块语法检查通过。setup-client私下复制已有B身份并保留端口/重连预算，setup-publisher只写原配置路径。start管理一次B连接与Codex，在固定mTLS及GET模型检查之后才启动工具；保持项目cwd、token仅子进程环境，不改全局Codex配置或网络权限。
@@ -54,7 +64,7 @@ B 故障恢复由验收脚本主动重建自己结束的 SSH，不等于产品�
 4. `probe --infer` 验证 Responses / SSE；连接真实上游时发送一个极短的计费请求，本机 `dev` 则返回不计费的合成输出。
 5. 在 Windows 原生与 WSL 各执行连接、诊断、流式生成和 Codex 任务，完成跨设备验证。
 
-## 自动化覆盖
+## 历史自动化覆盖（0.2.0及更早）
 
 截至 2026-11-20，默认 `npm test` 共 83 项通过。原有 14 项覆盖错误 token 不访问 HAI、凭证替换与工具头保留、路径/方法限制、SSE 首块及时到达、取消传播、压缩字节保持、429 及重试提示保留、超时与凭证错误、1 MiB 请求体完整性、请求体大小限制、配对隔离与 key 轮换、配置限制、Codex 凭证不进入参数、SSH 安全参数和参数注入拒绝。
 
@@ -86,7 +96,7 @@ Codex 验证使用低推理、只读 sandbox、ephemeral 会话及 `gpt-6-luna`�
 
 本机 `.local/client.json` 是单机测试配对文件，SSH target 为 A 的 loopback；用于 B 前必须改成 B 能到达的 Mac 地址或 SSH 别名。
 
-## 尚待实际 B 验证
+## 历史系统SSH方案的待测清单（已停止推进）
 
 截至 2026-11-20，用户已报告 Windows→ECS 及经 ECS 的 Windows→Mac 免交互公钥认证成功；认证测试时 Mac 的组列表不含 `admin`。Windows 经该链路调用实际 bridge + 模拟上游的 models 和 SSE 也已提供成功输出并确认逐段到达；不代表真实 HAI 模型 API、Windows Codex 或 WSL 端到端通过。
 
@@ -97,7 +107,7 @@ Codex 验证使用低推理、只读 sandbox、ephemeral 会话及 `gpt-6-luna`�
 - 休眠、断网后的有限重连与使用体验。
 - 长时间、多工具调用、超大上下文、并发和真实 compaction。
 
-本机测试结果不能标记为 Windows / WSL 跨设备已通过。
+本机测试结果不能标记为 Windows / WSL 跨设备已通过。上述Mac系统登录及旧内层SSH待测项不再推进；当前app-tls的待测项以本页最新状态为准。
 
 ## 纯模拟 ECS 中继准备（2026-11-20）
 

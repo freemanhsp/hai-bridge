@@ -2,6 +2,8 @@
 
 当前可安装版本 hai-bridge 0.5.0，需要 Node.js 22+ 和 npm；真实中转另需 OpenSSH。没有第三方 npm 依赖，不捆绑 Node.js。package.json 保留 private=true，本流程不发布 npm、不上传 GitHub，也不复制 HAI/SSH/桥接凭证。已有真实配对的日常使用见[单命令启动](daily-start.md)。
 
+2026-11-21源码新增publisher快捷启动/中文forward_ready提示，版本号仍0.5.0；此前生成/安装的tgz不会自动更新。本轮提交不等于重新打包或安装，不沿用旧包哈希证明新代码。配对与程序分开交付、期限不会因升级延长，见[凭据说明](credentials.md)。
+
 ## 源码工作区打包
 
 ~~~sh
@@ -61,10 +63,12 @@ Windows 可用 hai-bridge.cmd dev --port 0。启动输出的 doctor/probe 命令
 
 现有文档的 node bin/hai-bridge.mjs COMMAND，在安装后可换成 hai-bridge COMMAND（或 hai-bridge.cmd COMMAND）。源码命令仍有效。npm run dev、npm test、npm run pack 是源码入口，不是在任意目录使用的全局命令。
 
+源码新增 npm run setup:publisher -- --server-config PATH 和 npm run publish；安装后的对应入口仍是 hai-bridge setup-publisher / hai-bridge publish-app。不会静默改用旧CLI的publish（历史Mac SSH22转发）。
+
 旧命令默认 .local/server.json、.local/client.json、.local/publisher.json 相对当前工作目录，不相对安装目录。固定自己的工作目录，或给 --client-config / --publisher-config / --server-config 指定绝对路径；不要把配置存到安装目录。0.5.0 的 setup-client 显式导入已有真实配对至 ~/.hai-bridge/client.json，start 默认从这里读取；setup-publisher 只记录原 A 配置路径。升级/重装本身不会自动迁移配置、接管旧 SSH 或新建 HAI 认证。当前真实网络按 [真实 HAI](real-hai.md) 使用应用 mTLS 与出站 ECS SSH，不依赖历史 Mac 系统登录。
 
 ## 验证边界
 
 以下为早期安装验证记录。Windows 随后已提供0.4.0私有交付/真实HAI5/5报告，但0.5.0全局安装、单命令start、Windows Ctrl-C进程树及WSL仍待新版本实机反馈。0.5.0本机已用独立prefix离线安装，再导入稳定配对、离开源码目录执行真实CLI start；使用合成HAI/SSH/Codex，不等同真实工具验收。
 
-Mac 已通过真实离线打包、独立临时 prefix 安装、npm bin 入口、异地目录版本查询、安装后 dev→doctor→合成 SSE→SIGTERM 清理。测试未改系统全局安装、未访问真实 HAI/SSH、未停止旧服务。Windows 路径引用有自动化覆盖，但 Windows/WSL 实机安装、.cmd 入口及新中转 CLI 集中验收仍未完成。
+Mac 已通过真实离线打包、独立临时 prefix 安装、npm bin 入口、异地目录版本查询、安装后 dev→doctor→合成 SSE→SIGTERM 清理。这些早期测试未改系统全局安装、未访问真实 HAI/SSH、未停止旧服务。Windows路径引用有自动化覆盖，0.4.0私有试用另有成功报告；0.5.0新版日常封装/.cmd入口/真实Ctrl-C进程树和WSL仍未取得实机验收，不继承旧版本结果。

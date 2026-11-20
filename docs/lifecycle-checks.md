@@ -1,6 +1,6 @@
 # B 端集中生命周期验收
 
-历史内层 SSH 验收：管理策略关闭 Mac Remote Login 后已暂停推进。新的无需 Mac 系统登录的批量验收见[应用 TLS 验证](application-tls-validation.md)，本页保留以解释旧结果和工具。
+历史内层 SSH 验收：管理策略关闭 Mac Remote Login 后已停止新增验证。无需Mac系统登录的mock验收用check-app，见[应用CLI](application-cli.md)；真实日常使用/集中检查见[日常启动](daily-start.md)。本页只解释旧结果和check-lifecycle工具，不能套用新配对，也不代表0.5.0/A异常回收已通过。
 
 0.2.0 新增 check-lifecycle，Windows 原生与 WSL 使用同一个 Node 入口，无需另外下载 PowerShell/bash 脚本。它启动并管理本次专用内层 SSH，不接管现有 connect。当前只验收模拟服务和 B 内层，Mac→ECS 外层故障、真实断网、休眠、认证/指纹变化及真实 HAI 不在通过范围内。
 

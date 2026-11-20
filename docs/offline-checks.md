@@ -1,5 +1,7 @@
 # 离线自检
 
+范围提示（2026-11-21）：本页doctor --offline针对旧SSH配置与dev local_only，不能加载当前app-tls server/client。不要为使用旧入口重新启用Mac系统登录。当前应用的在线检查与端口排障见[应用排障](troubleshooting.md)；新应用离线诊断是[下一批任务](next-development.md)，尚未实现。
+
 不方便切换设备或连接真实 HAI 时，先检查本机准备情况。
 
 在 B 检查 client，默认读 .local/client.json；中继模拟配置请显式指定：

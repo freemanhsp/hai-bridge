@@ -17,7 +17,7 @@
 - B/A 与 ECS 端口均限定 loopback，不自动修改安全组、sshd、VPN、MDM、known_hosts 或 PowerShell 执行策略。
 - 固定合成上游与公开 mock token，环境 HAI 认证不读取；无真实模型调用或费用。请求不重试、不重放。
 
-本轮放在源码 explore/2026-11-20-app-tls，未整合主 CLI，也不包含在常规 npm 包。配套 prepare.mjs 单独生成白名单 B 验证包；操作见该目录 README.md。没有 GUI、自启动、生产登记/撤销、无限重连或真实 HAI 接入。
+独立历史实验放在源码 explore/2026-11-20-app-tls，其 prepare.mjs 验证包和 Windows 用户报告保留不变。0.3.0 随后增加正式[应用 CLI](application-cli.md)，新版配对与控制器需要新的验收结果；不能直接继承旧实验通过记录。没有 GUI、自启动、生产登记/撤销、无限重连或真实 HAI 接入。
 
 ## 集中验收
 

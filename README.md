@@ -1,6 +1,6 @@
 # HAI Bridge
 
-2026-11-20 更新：本机管理策略已关闭 Mac Remote Login，不再推进依赖系统登录的链路。新的[应用双向 TLS mock 验证](docs/application-tls-validation.md)不需要 Mac SSH 服务，附 Windows/WSL 集中脚本；尚未接入真实 HAI。以下原有 SSH CLI 保留为历史实现，不应为了使用它重新开启被策略关闭的功能。
+2026-11-20 更新：本机管理策略已关闭 Mac Remote Login，不再推进依赖系统登录的链路。0.3.0 已封装[应用双向 TLS CLI](docs/application-cli.md)：A 用 publish-app、B 用 connect-app，各自前台运行应用和到 ECS 的单条出站 SSH，无需云端部署我们的程序。当前仅 mock，真实 HAI 尚未接入。以下原有 SSH CLI 保留为历史实现，不应为了使用它重新开启被策略关闭的功能。
 
 让 B 上的 AI 工具经 SSH 访问 A 上已经认证的 HAI 代理。当前目标是 Mac A + Windows 11 原生 / WSL B，先验证 Codex 的完整请求与流式返回。
 
@@ -15,7 +15,7 @@ HAI key 和公司登录凭证留在 A。B 的配对文件只有独立的桥接 t
 源码工作区运行 npm run pack 可生成本地 .tgz 包和 SHA-256，方便将同一份代码交付其他设备。没有发布到 npm；安装包不含 .local、mydocs、explore 或凭证。
 
 ~~~sh
-npm install --global --offline --ignore-scripts --no-audit --no-fund ./hai-bridge-0.2.0.tgz
+npm install --global --offline --ignore-scripts --no-audit --no-fund ./hai-bridge-0.3.0.tgz
 hai-bridge --version
 hai-bridge dev --port 0
 ~~~

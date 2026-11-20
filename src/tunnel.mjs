@@ -56,8 +56,9 @@ export function sshFailureHint(reason) {
 }
 
 export async function runTunnel(config, { logger = console.log, onEvent, executable = 'ssh', spawnProcess = spawn,
-  signals = process, pause = (ms, signal) => wait(ms, undefined, { signal }), now = () => performance.now() } = {}) {
-  const args = sshArguments(config);
+  signals = process, pause = (ms, signal) => wait(ms, undefined, { signal }), now = () => performance.now(),
+  buildArgs = sshArguments } = {}) {
+  const args = buildArgs(config);
   const maxRetries = config.maxRetries ?? 5;
   if (!Number.isInteger(maxRetries) || maxRetries < 0 || maxRetries > 100) throw new Error('Invalid maxRetries');
   const controller = new AbortController();
@@ -73,6 +74,7 @@ export async function runTunnel(config, { logger = console.log, onEvent, executa
     while (!controller.signal.aborted) {
       attempt++;
       emit('starting');
+      if (controller.signal.aborted) return stopped();
       logger('Starting SSH ' + direction + ': ' + config.target + ' (loopback port ' + config.localPort + ')');
       const started = now();
       const result = await new Promise(resolve => {

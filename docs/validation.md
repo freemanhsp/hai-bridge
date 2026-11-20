@@ -1,5 +1,15 @@
 # 验证记录
 
+## 应用 CLI 0.3.0（2026-11-20）
+
+增加13项正式封装回归后，默认105/105本机通过。覆盖版本化mock配置、B-only身份导出/导入、输出不覆盖、凭证环境隔离、错误模式/版本/字段/端口/root/文件权限拒绝、TLS身份不匹配、证书/密钥文件夹带其他身份拒绝、单层ECS参数与保留旧默认检查、启动取消/端口冲突回收、认证失败不重试及安全报告。
+
+集成用正式runApplication与check-app核心、真实双向TLS和受控loopback TCP子进程替身：显式结束自身B传输后，正式runTunnel观察退出、退避和第二attempt，旧流清理/无POST重放、新Unicode SSE、HTTP/TLS端口释放通过。不是探针主动restart；没有实际SSH加密或ECS/Windows/WSL网络验证。A publisher逻辑亦测试一次模拟网络退出后的有界重试与主动停止，但不是实际A外层端到端恢复。
+
+私有B交付包实际tar白名单为普通runtime.tgz、Windows脚本、说明、bundle.json与固定四份B身份；不含A私钥/SSH身份/CA签名私钥/HAI。独立临时目录离线安装后，安装版CLI帮助与init-app-client加载配对成功，不依赖B的OpenSSL。Windows脚本在Mac无PowerShell，尚未实机执行；新版不能继承旧实验Windows全部PASS。使用见[应用CLI](application-cli.md)。
+
+实际Mac已用init-app生成新版身份，并以publish-app启动A TLS18081及出站SSH；B身份访问本机TLS健康GET为200，ECS18083通过只读ss确认仅为127.0.0.1。只停止助手自己拥有的旧实验进程，旧资产保留。以上证明A入口及远端监听准备，不证明新版Windows/WSL或端到端自动恢复；没有真实HAI请求。历史实验独立7/7回归通过，npm run check与新模块语法检查通过。
+
 ## 应用双向 TLS（2026-11-20，新约束）
 
 Jamf/统一日志确认管理策略关闭 Mac Remote Login，旧系统登录链路暂停。新增独立应用 TLS mock 实验；9 项新增测试后，默认 92/92 本机通过。核心集成完整运行 19 项集中验收，通过真实双向 TLS 和不终止 TLS 的本机 TCP relay；单独检查 A 固定客户端指纹、非受信/错误用途的客户端证书、假冒 TLS 服务和占用端口保护。中转捕获的二进制中未出现测试 token、请求路径或合成回复明文（仅针对该 mock 测试样本，不宣称元数据不可见）。

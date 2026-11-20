@@ -12,10 +12,21 @@ import { diagnoseOffline, formatOfflineReport } from '../src/preflight.mjs';
 import { runDevelopment } from '../src/dev.mjs';
 import { PACKAGE_NAME, VERSION, versionInfo } from '../src/version.mjs';
 import { runLifecycleChecks } from '../src/lifecycle.mjs';
+import { initializeApplicationPublisher, initializeApplicationClient, loadApplicationConfig, loadToolClient,
+  DEFAULT_APP_SERVER_ROOT, DEFAULT_APP_CLIENT_CONFIG, APPLICATION_TRANSPORT } from '../src/app-config.mjs';
+import { runApplication } from '../src/app-runtime.mjs';
+import { checkApplicationClient } from '../src/app-checks.mjs';
 
 const HELP = `HAI Bridge MVP — Node.js 22+
 
   version      [--json] (also --version / -v)
+  init-app     --mock --ssh-target USER@ECS --identity-file PATH --known-hosts-file PATH
+               [--out DIRECTORY] [--app-port PORT] [--relay-port PORT] [--ssh-port PORT] [--max-retries N]
+  init-app-client --mock --pairing-dir DIRECTORY --ssh-target USER@ECS --identity-file PATH --known-hosts-file PATH
+                  [--out PATH] [--local-port PORT] [--tunnel-port PORT] [--relay-port PORT] [--ssh-port PORT] [--max-retries N]
+  publish-app  --server-config PATH [--json]
+  connect-app  [--client-config PATH] [--json]
+  check-app    --client-config PATH --out PATH [--interrupt-ssh] [--json]
   init-server  [--server-config PATH] [--upstream-url URL] [--upstream-auth-file PATH]
   pair         --ssh-target USER@MAC [--out PATH] [--local-port PORT] [--model MODEL]
   serve        [--server-config PATH]
@@ -42,6 +53,8 @@ Credentials are not printed. 'probe --infer' is billable with a real upstream; d
 Offline doctor never connects to SSH/HAI or changes trust; it briefly checks local port binding.
 dev starts only local mock services (default port 18090); config is temporary unless --out is set.
 check-lifecycle is MOCK ONLY and owns its SSH; --interrupt-ssh intentionally stops that child to test recovery.
+Application TLS commands are MOCK ONLY; A/B use outbound ECS SSH, never Mac system login.
+Application init needs OpenSSL on A only. B imports a private short-lived TLS pairing; HAI is not read.
 `;
 
 async function main() {
@@ -67,11 +80,51 @@ async function main() {
     'identity-file': { type: 'string' }, 'relay-identity-file': { type: 'string' },
     'known-hosts-file': { type: 'string' }, 'ssh-port': { type: 'string' }, 'relay-port': { type: 'string' },
     'pairing-file': { type: 'string' },
+    'pairing-dir': { type: 'string' }, 'app-port': { type: 'string' }, 'tunnel-port': { type: 'string' },
+    'max-retries': { type: 'string' },
   } });
   if (!command || command === 'help' || command === '--help' || command === '-h' || values.help) {
     console.log(HELP); return;
   }
   if (positionals.length) throw new Error('Unexpected positional arguments; pass Codex arguments after --');
+  if (['init-app', 'init-app-client', 'publish-app', 'connect-app', 'check-app'].includes(command)) {
+    const allowed = command === 'init-app' ? ['mock', 'ssh-target', 'identity-file', 'known-hosts-file', 'out', 'app-port', 'relay-port', 'ssh-port', 'max-retries']
+      : command === 'init-app-client' ? ['mock', 'ssh-target', 'identity-file', 'known-hosts-file', 'pairing-dir', 'out', 'local-port', 'tunnel-port', 'relay-port', 'ssh-port', 'max-retries']
+      : command === 'publish-app' ? ['server-config', 'json']
+      : command === 'connect-app' ? ['client-config', 'json'] : ['client-config', 'out', 'interrupt-ssh', 'json'];
+    if (userArgs.length || Object.keys(values).some(key => !allowed.includes(key))) throw new Error('Unsupported application command options');
+    const event = value => console.log(values.json ? JSON.stringify(value) :
+      (value.event === 'application' ? 'MOCK application ' + value.role + ': ' + value.state + (value.loopback_port ? ' (loopback ' + value.loopback_port + '; run doctor to verify)' : '')
+        : 'SSH ' + value.direction + ': ' + value.state + (value.reason ? ' (' + value.reason + ')' : '') + (value.hint ? '; ' + value.hint : '')));
+    if (command === 'init-app' || command === 'init-app-client') {
+      const appOptions = { mock: values.mock, sshTarget: values['ssh-target'], identityFile: values['identity-file'],
+        knownHostsFile: values['known-hosts-file'], pairingDirectory: values['pairing-dir'],
+        appPort: values['app-port'] === undefined ? undefined : Number(values['app-port']),
+        localPort: values['local-port'] === undefined ? undefined : Number(values['local-port']),
+        tunnelPort: values['tunnel-port'] === undefined ? undefined : Number(values['tunnel-port']),
+        relayPort: values['relay-port'] === undefined ? undefined : Number(values['relay-port']),
+        sshPort: values['ssh-port'] === undefined ? undefined : Number(values['ssh-port']),
+        maxRetries: values['max-retries'] === undefined ? undefined : Number(values['max-retries']) };
+      if (command === 'init-app') {
+        const result = await initializeApplicationPublisher(values.out || DEFAULT_APP_SERVER_ROOT, appOptions);
+        console.log('MOCK application server configuration: ' + result.serverFile);
+        console.log('Private B-only TLS pairing directory: ' + result.clientDirectory + '; do not upload publicly.');
+      } else console.log('MOCK application client configuration: ' + await initializeApplicationClient(values.out || DEFAULT_APP_CLIENT_CONFIG, appOptions));
+    } else if (command === 'check-app') {
+      const result = await checkApplicationClient({ clientFile: values['client-config'], out: values.out,
+        interruptSsh: values['interrupt-ssh'] }, { onEvent: event });
+      console.log(values.json ? JSON.stringify({ event: 'check_summary', status: result.report.status, report_file: result.destination })
+        : 'MOCK application checks: ' + result.report.status + '; report: ' + result.destination);
+      process.exitCode = ['fail', 'interrupted'].includes(result.report.status) ? 1 : 0;
+    } else {
+      if (command === 'publish-app' && !values['server-config']) throw new Error('publish-app requires --server-config');
+      const role = command === 'publish-app' ? 'publisher' : 'client';
+      const config = await loadApplicationConfig(role === 'publisher' ? values['server-config'] : values['client-config'] || DEFAULT_APP_CLIENT_CONFIG, role);
+      process.exitCode = await runApplication(config, { onEvent: event });
+    }
+    return;
+  }
+  if (['pairing-dir', 'app-port', 'tunnel-port', 'max-retries'].some(key => values[key] !== undefined)) throw new Error('Application options require an application command');
   const serverFile = values['server-config'] || DEFAULT_SERVER_CONFIG;
   const clientFile = values['client-config'] || DEFAULT_CLIENT_CONFIG;
   const publisherFile = values['publisher-config'] || DEFAULT_PUBLISHER_CONFIG;
@@ -176,17 +229,25 @@ async function main() {
     return;
   }
   if (!['connect', 'doctor', 'probe', 'codex'].includes(command)) throw new Error(`Unknown command: ${command}`);
-  const config = await loadClientConfig(clientFile);
+  const config = await loadToolClient(clientFile);
+  if (config.transport === APPLICATION_TRANSPORT && ['connect', 'codex'].includes(command)) throw new Error('Mock application config requires connect-app; real AI tool sessions are not implemented');
+  if (config.transport === APPLICATION_TRANSPORT && values['base-url']) throw new Error('Mock application tools do not accept a base URL override');
   const origin = clientOrigin(config, values['base-url']);
   if (command === 'connect') {
     if (config.localOnly) throw new Error('Local-only dev configuration does not use SSH; run doctor or probe directly');
     process.exitCode = await runTunnel(config, tunnelOptions); return;
   }
   if (command === 'doctor' || (command === 'probe' && !values.infer)) {
-    console.log(JSON.stringify(await diagnose(config, origin), null, 2)); return;
+    const result = await diagnose(config, origin);
+    if (config.transport === APPLICATION_TRANSPORT && (!result.mock || !result.configured_model_available)) throw new Error('Expected the fixed mock application upstream');
+    console.log(JSON.stringify(result, null, 2)); return;
   }
   if (command === 'probe') {
-    console.log(JSON.stringify(await probeInference(config, origin, values.model), null, 2)); return;
+    if (config.transport === APPLICATION_TRANSPORT) {
+      const result = await diagnose(config, origin);
+      if (!result.mock || !result.configured_model_available) throw new Error('Refusing POST to a non-mock application upstream');
+    }
+    console.log(JSON.stringify(await probeInference(config, origin, values.model ?? (config.transport === APPLICATION_TRANSPORT ? config.model : undefined)), null, 2)); return;
   }
   process.exitCode = await runCodex(config, origin, userArgs);
 }

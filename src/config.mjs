@@ -161,6 +161,7 @@ export async function exportClient(serverFile, outputFile, options) {
 export async function loadClientConfig(file = DEFAULT_CLIENT_CONFIG, env = process.env) {
   const configFile = path.resolve(file);
   const raw = await readJson(configFile);
+  if (raw.transport !== undefined) throw new Error('Application transport configurations require the application CLI; legacy SSH cannot load them');
   if (raw.local_only !== undefined && typeof raw.local_only !== 'boolean') throw new Error('local_only must be a boolean');
   if (!['127.0.0.1', '::1'].includes(raw.remote_host)) throw new Error('Remote destination must be loopback');
   if (typeof raw.model !== 'string' || !/^[A-Za-z0-9_.-]+$/.test(raw.model)) throw new Error('Invalid model');

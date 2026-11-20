@@ -4,18 +4,18 @@
 
 日志已确认 Mac Remote Login 被 Disable Sharing Services 策略关闭。停止推进 Mac 系统登录稳定性、旧内层 SSH 生命周期与 Mac SSH 权限改造，不反复开启或换端口重建被关闭的功能。旧代码和验证记录保留；GUI、后台常驻、WSS 自建协议也暂不推进。
 
-新候选为应用双向 TLS，复用双方到 ECS 的出站 SSH，不需要 Mac SSH 服务或管理员权限。本机实验已通过；用户报告最终 Windows 批量脚本“全部pass”，Windows→ECS→Mac mock 链路验收通过，WSL 未验证。完整 Windows JSON 尚未收到，不补造逐项数据。详见[应用 TLS 验证](application-tls-validation.md)。
+当前应用双向 TLS 复用双方到 ECS 的出站 SSH，不需要 Mac SSH 服务或管理员权限。本机实验已通过；正式 CLI 交付后用户提交 [Windows 21/21 pass 完整 JSON](../explore/2026-11-20-app-cli/results-windows-user.json)，包含 B 控制器受控中断后的自动恢复、无重放与端口清理。WSL 未验证；原 JSON 未提供 CLI 版本或包哈希，不补造。详见[应用 TLS 验证](application-tls-validation.md)。
 
 | 优先级 | 工作 | 边界 |
 | --- | --- | --- |
-| 已完成本轮 | 本机真实 TLS 回归与短期 B 交付包；Windows 集中 mock 验收 | Windows 为用户报告，未收到完整 JSON；WSL 不标绿 |
-| 已实现本机封装 | 0.3.0 init-app/init-app-client、版本化短期配对、前台 publish-app/connect-app/停止与私有 B 交付 | 仅 mock；不弱化旧默认检查，不依赖 Mac 登录 |
-| 接着集中验收 | check-app 观察正式 B 控制器有界自动恢复；同一安装版 Windows/WSL | 新版本机 TCP stub 不代表真实 SSH；A 外层故障未端到端验证 |
-| 授权后 | 最小真实 HAI 与实际 AI 工具会话 | 单独确认个人 ECS 路径与公司数据流转许可 |
+| 已完成本轮 | 本机真实 TLS 回归、短期 B 交付；Windows mock及最小真实HAI调用 | Windows mock21/21、真实0.4.0报告5/5 pass；WSL不标绿 |
+| 已实现本机封装 | 0.4.0 显式 --hai / 隔离 mock、短期配对、前台应用控制器与私有 B 交付 | 本机116/116；HAI认证只留A，不依赖Mac登录 |
+| 接着实战 | 在 Windows 无敏感本地测试项目运行 Codex/工具读写任务 | Windows真实API已通过，复用现有配对；实际工具会话另行验证，不再重复API探针 |
+| 后续补齐 | A 外层受控故障恢复；WSL独立验收；VPN/休眠与长期使用 | Windows mock B自动恢复已通过；这些未验证项不阻塞受控最小真实试用 |
 
 停止重复已通过的基础 models/SSE/取消/错误透传及旧系统 SSH 验证，保留回归即可。暂不做 GUI、WSS 重写、多用户或后台常驻；设备撤销/证书轮换按后续实际需求分批评估，不因一次 mock 通过就扩大为平台。
 
-应用网络技术可行不等于公司允许该用途。Mac 休眠、VPN/网络恢复、长期可用性仍未验证；WSL 可以在下次集中窗口验收，不阻止本机跨平台 Node 封装开发。
+用户已针对个人 Windows 经个人 ECS 到公司 Mac HAI 的路径明确确认可尝试，本批按该确认范围开发与最小调用，不扩大到其他设备/用户/用途，也不宣称独立核验书面审批。Mac 休眠、VPN/网络恢复、长期可用性仍未验证；WSL 可以在下次集中窗口单独验收。
 
 新版集中脚本不再主动替控制器restart，显式结束自己拥有的B SSH，观察正式重连事件与新请求。默认不开故障注入时报告partial。A外层控制器有本机逻辑测试，但实际ECS外层断链/恢复须下一批单独证明。操作见[应用CLI](application-cli.md)。
 

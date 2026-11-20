@@ -3,12 +3,12 @@ import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { sshArguments, runTunnel } from './tunnel.mjs';
 import { applicationPort, APPLICATION_TRANSPORT } from './app-config.mjs';
-import { startMockPublisher, startMockClient } from './app-transport.mjs';
+import { startMockPublisher, startMockClient, startHaiPublisher, startHaiClient } from './app-transport.mjs';
 
 export function applicationSshArguments(config) {
-  if (config.transport !== APPLICATION_TRANSPORT || config.mode !== 'mock'
+  if (config.transport !== APPLICATION_TRANSPORT || !['mock', 'hai'].includes(config.mode)
       || !['publisher', 'client'].includes(config.role) || !config.identityFile || !config.knownHostsFile) {
-    throw new Error('Only explicit mock application SSH configurations are accepted');
+    throw new Error('Only explicit versioned application SSH configurations are accepted');
   }
   if (!/^[A-Za-z0-9_.-]+@[A-Za-z0-9.:[\]-]+$/.test(config.target) || config.target.startsWith('root@')) throw new Error('Application SSH requires a non-root ECS user');
   const relayPort = applicationPort(config.relayPort, 'relay port');
@@ -31,12 +31,13 @@ export async function assertPortFree(port) {
 
 export async function runApplication(config, { signals = process, onEvent = () => {}, onListening,
   spawnProcess = spawn, executable = 'ssh', pause, now,
-  startPublisher = startMockPublisher, startClient = startMockClient } = {}) {
+  startPublisher = config.mode === 'hai' ? startHaiPublisher : startMockPublisher,
+  startClient = config.mode === 'hai' ? startHaiClient : startMockClient } = {}) {
   applicationSshArguments(config); // Reject transport downgrade before binding or spawning.
   const ownedSignals = new EventEmitter();
   let service, child, stopping = false, forceTimer;
   const emit = (state, details = {}) => onEvent({ event: 'application', transport: APPLICATION_TRANSPORT,
-    role: config.role, state, mock: true, hai: 'not_called', ...details });
+    role: config.role, state, mock: config.mode === 'mock', hai: config.mode === 'mock' ? 'not_called' : 'enabled', ...details });
   const stop = () => {
     if (stopping) return;
     stopping = true;
@@ -48,8 +49,8 @@ export async function runApplication(config, { signals = process, onEvent = () =
   try {
     if (config.role === 'client') await assertPortFree(config.tunnelPort);
     if (stopping) return 0;
-    service = config.role === 'publisher' ? await startPublisher(config.pair, { port: config.appPort })
-      : await startClient(config.pair, { port: config.localPort, tlsPort: config.tunnelPort });
+    service = config.role === 'publisher' ? await startPublisher(config.pair, { port: config.appPort, config })
+      : await startClient(config.pair, { port: config.localPort, tlsPort: config.tunnelPort, token: config.token });
     if (stopping) return 0;
     emit('listening', { loopback_port: service.port, end_to_end: 'not_checked' });
     onListening?.(service);

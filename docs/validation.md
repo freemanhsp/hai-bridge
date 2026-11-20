@@ -1,14 +1,30 @@
 # 验证记录
 
+## 最小真实 HAI 应用接入 0.4.0（2026-11-20）
+
+用户明确确认可尝试个人 Windows → 个人 ECS → 公司 Mac HAI 的既有路径。本轮新增隔离 --hai 配对/随机 token、固定 A loopback 上游及逐请求认证读取、B try-hai 与 Windows 私有一次试用包；check-app 和原 mock 交付仍只接受 mock。无 VPN/MDM/系统登录/云端权限修改，不导出 HAI key。
+
+用户随后提交 [Windows 真实调用完整报告](../explore/2026-11-20-hai-app/results-windows-user.json)：0.4.0、win32、Node24.22.3、application-cli-real-HAI-B-ECS-A、mock=false，5/5 pass；真实模型列表与Responses SSE完成，结束后自有HTTP/TLS隧道端口释放。报告14个模型、配置模型可用、用量input11/output5 tokens。Windows→ECS→Mac→HAI最小真实流式调用据此记为通过（用户提供完整报告，非助手直接执行）。实际AI工具任务、WSL、A外层恢复、VPN/休眠和长期稳定性仍未验证；[证据来源与边界](../explore/2026-11-20-hai-app/README.md)分别保留，不与本机报告合并为一次调用。
+
+新增11项合成 HAI 回归，默认116/116本机通过，npm run check 与模块语法检查通过。覆盖真实/模拟身份互斥、B-only交付、危险配置与公开 mock token 拒绝、A 凭证替换/文件更新、Unicode SSE、只读列表不发POST、显式单POST、429/503无重试、报告隐私/独占输出及离线安装。TLS 与本机 TCP 子进程替身不代表真实 SSH/ECS；Mac 无 PowerShell，Windows 结果来自上述独立用户报告。
+
+Mac 真实已认证 HAI 模型列表HTTP200，14个模型，配置模型可用。随后仅发送一次固定无敏感短提示词，经本机 B 客户端适配器 → A mTLS bridge → HAI，HTTP200、response.completed成功，报告用量input11/output5 tokens。无正文或凭证日志，[原始安全报告](../explore/2026-11-20-hai-app/results-mac-local.json)明确标记 Mac-local-client-TLS-A-real-HAI-not-B-ECS-A。这是一次计费调用，不重复发送；不证明 Windows/WSL/ECS端到端或实际 Codex 会话。
+
+助手自有旧 mock publisher 已正常停止0，新真实 publish-app 保持前台，A TLS18081与ECS loopback18083沿用既有路径；其listening/starting不代表远端就绪，须以B结果确认。操作与下一次集中试用见[真实接入](real-hai.md)。
+
+后续Mac重复启动失败时，只读检查确认已有同配置publisher监听18081，mTLS /healthz返回200，未停止旧进程或新发模型请求。用户按说明继续后反馈“好的成功了”，记录为启动流程成功反馈；没有完整Codex任务/读写输出，不据此宣布工具任务已验收。
+
 ## 应用 CLI 0.3.0（2026-11-20）
+
+本轮交付后，用户提供完整 Windows JSON：[原报告](../explore/2026-11-20-app-cli/results-windows-user.json)与[证据边界](../explore/2026-11-20-app-cli/README.md)。win32、Node 24.22.3、application-cli-B-ECS-A，21/21 pass，mock=true、hai=not_called。据此记录 Windows 新 CLI 的双向 TLS、协议与 B 自有 SSH 受控中断后的正式控制器自动恢复、无 POST 重放、清理与端口释放通过（用户提交报告，非助手直接执行）。原 JSON 未含 CLI 版本、包哈希或执行时间，不补造。WSL、A 外层恢复、VPN/休眠、真实 HAI 与实际 AI 工具会话仍未验证。
 
 增加13项正式封装回归后，默认105/105本机通过。覆盖版本化mock配置、B-only身份导出/导入、输出不覆盖、凭证环境隔离、错误模式/版本/字段/端口/root/文件权限拒绝、TLS身份不匹配、证书/密钥文件夹带其他身份拒绝、单层ECS参数与保留旧默认检查、启动取消/端口冲突回收、认证失败不重试及安全报告。
 
 集成用正式runApplication与check-app核心、真实双向TLS和受控loopback TCP子进程替身：显式结束自身B传输后，正式runTunnel观察退出、退避和第二attempt，旧流清理/无POST重放、新Unicode SSE、HTTP/TLS端口释放通过。不是探针主动restart；没有实际SSH加密或ECS/Windows/WSL网络验证。A publisher逻辑亦测试一次模拟网络退出后的有界重试与主动停止，但不是实际A外层端到端恢复。
 
-私有B交付包实际tar白名单为普通runtime.tgz、Windows脚本、说明、bundle.json与固定四份B身份；不含A私钥/SSH身份/CA签名私钥/HAI。独立临时目录离线安装后，安装版CLI帮助与init-app-client加载配对成功，不依赖B的OpenSSL。Windows脚本在Mac无PowerShell，尚未实机执行；新版不能继承旧实验Windows全部PASS。使用见[应用CLI](application-cli.md)。
+私有B交付包实际tar白名单为普通runtime.tgz、Windows脚本、说明、bundle.json与固定四份B身份；不含A私钥/SSH身份/CA签名私钥/HAI。独立临时目录离线安装后，安装版CLI帮助与init-app-client加载配对成功，不依赖B的OpenSSL。Mac 无 PowerShell，Windows 结果来自上述独立用户报告，不继承旧实验Windows全部PASS。使用见[应用CLI](application-cli.md)。
 
-实际Mac已用init-app生成新版身份，并以publish-app启动A TLS18081及出站SSH；B身份访问本机TLS健康GET为200，ECS18083通过只读ss确认仅为127.0.0.1。只停止助手自己拥有的旧实验进程，旧资产保留。以上证明A入口及远端监听准备，不证明新版Windows/WSL或端到端自动恢复；没有真实HAI请求。历史实验独立7/7回归通过，npm run check与新模块语法检查通过。
+实际Mac已用init-app生成新版身份，并以publish-app启动A TLS18081及出站SSH；B身份访问本机TLS健康GET为200，ECS18083通过只读ss确认仅为127.0.0.1。只停止助手自己拥有的旧实验进程，旧资产保留。这些 Mac 冒烟检查仅证明 A 入口及远端监听准备；Windows 端到端与 B 自动恢复另据上述用户报告，不证明 WSL 或 A 外层恢复。没有真实HAI请求。历史实验独立7/7回归通过，npm run check与新模块语法检查通过。
 
 ## 应用双向 TLS（2026-11-20，新约束）
 

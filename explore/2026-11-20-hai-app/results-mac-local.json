@@ -1,0 +1,25 @@
+{
+  "version": "0.4.0",
+  "evidence": "Mac-local-client-TLS-A-real-HAI-not-B-ECS-A",
+  "platform": "darwin",
+  "mock": false,
+  "status": "pass",
+  "hai": "inference_ok",
+  "inference": "completed",
+  "not_checked": [
+    "Windows_B_ECS_A",
+    "WSL",
+    "real_AI_tool_session",
+    "A_outer_link_recovery",
+    "VPN_sleep_resume"
+  ],
+  "models": {
+    "count": 14,
+    "configured_model_available": true
+  },
+  "http_status": 200,
+  "usage": {
+    "input_tokens": 11,
+    "output_tokens": 5
+  }
+}

@@ -1,9 +1,9 @@
 {
   "name": "hai-bridge",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "Cross-device HAI bridge CLI with application mTLS over outbound SSH; application transport currently mock-only.",
+  "description": "Cross-device HAI bridge CLI with isolated mock or explicit real HAI over application mTLS and outbound SSH.",
   "engines": { "node": ">=22" },
   "bin": { "hai-bridge": "bin/hai-bridge.mjs" },
   "files": ["bin/*.mjs", "src/*.mjs", "docs/*.md", "README.md"],
@@ -12,7 +12,8 @@
     "dev": "node bin/hai-bridge.mjs dev",
     "pack": "node scripts/pack.mjs",
     "pack:app-checks": "node scripts/pack-app-checks.mjs",
-    "test": "node --test test/bridge.test.mjs test/config.test.mjs test/tunnel.test.mjs test/relay-config.test.mjs test/client.test.mjs test/preflight.test.mjs test/dev.test.mjs test/package.test.mjs test/lifecycle.test.mjs test/app-tls.test.mjs test/app-cli.test.mjs",
+    "pack:hai": "node scripts/pack-app-checks.mjs --hai",
+    "test": "node --test test/bridge.test.mjs test/config.test.mjs test/tunnel.test.mjs test/relay-config.test.mjs test/client.test.mjs test/preflight.test.mjs test/dev.test.mjs test/package.test.mjs test/lifecycle.test.mjs test/app-tls.test.mjs test/app-cli.test.mjs test/hai-app.test.mjs",
     "check": "node --check bin/hai-bridge.mjs"
   }
 }

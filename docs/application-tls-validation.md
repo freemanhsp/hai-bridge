@@ -1,5 +1,7 @@
 # 无 Mac 系统登录的应用 TLS 验证
 
+本页主要描述独立 mock 实验及后续 mock CLI 证据。0.4.0 显式真实 HAI 与单次试用另见[真实接入](real-hai.md)，不能把这里的合成上游或自动恢复结果迁移为真实跨设备结果。
+
 ## 决策
 
 2026-11-20 Jamf 与统一日志确认管理脚本成功关闭 Remote Login。暂停以 Mac SSH 服务为终点的旧方案，不重新开启或换端口重建系统登录。应用级候选复用已有到 ECS 的出站 SSH，增加端到端双向 TLS；它不证明真实 HAI/公司数据中继已获授权。
@@ -31,6 +33,6 @@ Windows：包内 windows-checks.ps1 一次运行，自动建立、自行中断�
 
 ## 当前结果与未验证项
 
-本机真实 TLS/透明 TCP 与默认回归通过；用户对最终 Windows 集中脚本反馈“全部pass”，Windows 原生→ECS→Mac 应用 TLS mock 记为通过（用户报告，完整 JSON 尚未收到）。不复用旧 11 PASS，不将本机报告标为 Windows 报告；详细证据见[验证记录](validation.md)。
+本机真实 TLS/透明 TCP 与默认回归通过；历史独立实验 Windows 反馈为“全部pass”，该历史记录未附完整 JSON。随后正式 0.3.0 CLI 交付后，用户另提供 [Windows 完整 JSON](../explore/2026-11-20-app-cli/results-windows-user.json)：21/21 pass，包含正式 B 控制器的受控 SSH 中断、自动恢复、无重放与端口释放。两批证据分别保存，不复用旧 11 PASS，不将本机报告标为 Windows 报告；详细证据见[验证记录](validation.md)。
 
-WSL、A 外层故障、VPN/休眠恢复、产品自动重连、真实 HAI、实际 AI 工具会话、长期设备撤销与稳定性仍需独立证明。本轮基础协议验收可以收尾，下一步先评估主 CLI 的独立应用传输封装，再验证真实自动恢复；不因此开始真实 HAI 调用。
+WSL、A 外层故障恢复、VPN/休眠恢复、真实 HAI、实际 AI 工具会话、长期设备撤销与稳定性仍需独立证明。Windows 基础协议与 B 受控故障自动恢复验收可以收尾，下一步优先准备 A 外层恢复集中验收，WSL 单独记录；不因此开始真实 HAI 调用。

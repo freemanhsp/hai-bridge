@@ -1,6 +1,6 @@
-# 应用 TLS CLI（0.3.0，当前仅 mock）
+# 应用 TLS mock CLI（0.3.0 起）
 
-本版本把独立实验封装为安装包内的命令。A/B 均只运行 ECS 出站 SSH；云服务器只保留现有 SSH 服务与 loopback 转发，不部署我们的程序，不开启 Mac Remote Login。固定合成上游，不读 HAI/SSO 或其环境认证，不计费；不支持真实 AI 工具会话。
+本页描述隔离的 mock 模式。0.4.0 另增显式 --hai 的[真实接入](real-hai.md)，不能将旧 mock 配对改成真实模式。本页命令固定合成上游，不读 HAI/SSO、不计费，不用于实际 AI 工具会话。A/B 均只运行 ECS 出站 SSH；云服务器只保留现有 SSH 服务与 loopback 转发，不部署我们的程序，不开启 Mac Remote Login。
 
 ## A 一次初始化
 
@@ -10,7 +10,7 @@
 
 输出 A 的 server.json 和仅供 B 的 client-pair 目录。只交付 client-pair；它含 B 的 7 天实验 TLS 私钥，不含 A 私钥、A SSH identity、CA 签名私钥或 HAI。CA 签名私钥生成后丢弃，证书过期需要新配对，不提供自动续期/生产撤销平台。
 
-配置有明确 schema_version=1、transport=app-tls、role 和 mode=mock。未知版本、真实模式和额外字段均拒绝；新 CLI 不直接接受旧 explore 配对，请重新初始化。输出目录用 --out 指定；--app-port 默认18081、--relay-port 默认18083、--ssh-port 默认22、--max-retries 默认5（0–10）。应用/转发端口只能是1024以上的 loopback 端口。
+配置有明确 schema_version=1、transport=app-tls、role 和 mode=mock。未知版本、与配对不符的模式和额外字段均拒绝；新 CLI 不直接接受旧 explore 配对，请重新初始化。输出目录用 --out 指定；--app-port 默认18081、--relay-port 默认18083、--ssh-port 默认22、--max-retries 默认5（0–10）。应用/转发端口只能是1024以上的 loopback 端口。
 
 ## A 每次启动
 
@@ -47,6 +47,8 @@ publish-app/connect-app 在前台；Ctrl-C 仅停止本次 SSH 子进程和应�
 --json 提供逐行安全生命周期状态，不含认证/密钥/正文。listening/starting 都不是端到端 ready。B SSH 连接活着而 A 外层失联时，单个请求可失败；A 恢复发布后新请求可重新连接，不强制重启 B SSH。
 
 ## Windows/WSL 集中验收
+
+当前 Windows 状态：用户已提交 [21/21 pass 的完整报告](../explore/2026-11-20-app-cli/results-windows-user.json)（win32、Node 24.22.3），包括 B 正式控制器自动恢复及端口清理。仅 mock；WSL 与 A 外层恢复仍未验证。此结果独立于旧实验反馈，详见[验证记录](validation.md)。
 
 不要同时运行 connect-app 和 check-app 占用同端口；check-app 自己启动正式应用控制器。
 

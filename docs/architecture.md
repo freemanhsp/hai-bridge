@@ -1,6 +1,17 @@
 # MVP 架构
 
-2026-11-20 新约束：管理策略明确关闭本机 Remote Login，下述依赖 Mac SSH 服务的架构仅作为历史实现保留。新路径为双方出站 SSH 至 ECS、端到端应用双向 TLS；0.3.0 提供[应用 CLI](application-cli.md)，当前仅固定 mock。不修改系统登录或安全策略；真实 HAI 迁移尚未实现。
+2026-11-20 新约束：管理策略明确关闭本机 Remote Login，不修改系统登录或安全策略。当前路径为双方出站 SSH 至 ECS、端到端应用双向 TLS；0.4.0 提供[显式真实 HAI](real-hai.md)，保留隔离的[应用 mock](application-cli.md)。
+
+    B 工具 → B HTTP loopback → 应用 mTLS密文 / B出站SSH → ECS loopback
+      → A出站反向SSH → A TLS bridge → A本地HAI → 公司平台
+
+两条SSH均终止于ECS，A不运行SSH服务，也不提供远程命令/文件访问。ECS只转发应用TLS密文，可观察连接元数据并中断流量；不能据此免除公司数据流转许可。A/B固定校验CA、服务名及对端证书指纹，7天身份；B另持独立随机bridge token，HAI/SSO始终只在A。真实与mock服务名/身份隔离，真实认证逐请求从A明确文件读取，不接受环境覆盖；仅开放OpenAI模型API白名单。
+
+Windows mock CLI完整用户报告21/21通过；Mac本机真实mTLS→HAI一次流式调用成功，随后Windows真实B→ECS→A→HAI完整用户报告5/5通过。WSL、实际工具会话与长期恢复仍未验证，见[验证记录](validation.md)。
+
+## 历史系统 SSH 架构（不继续部署）
+
+下述依赖Mac SSH服务的架构和配置行为仅保留作历史参考，不应重新开启被关闭的功能。
 
 ```mermaid
 flowchart LR

@@ -30,6 +30,7 @@ export async function checkApplicationClient({ clientFile, out, interruptSsh = f
   try { await fs.lstat(destination); throw Object.assign(new Error('Report exists'), { code: 'EEXIST' }); }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
   const config = await loadApplicationConfig(clientFile, 'client');
+  if (config.mode !== 'mock') throw new Error('check-app is mock-only; use try-hai for deliberate real requests');
   if (interruptSsh && (!config.reconnect || config.maxRetries === 0)) throw new Error('Recovery check requires a nonzero bounded retry budget');
   const ownSignals = new EventEmitter();
   let interrupted = false, child, service, runtimeTask, runtimeEnded = false, runtimeCode, runtimeFailed = false;

@@ -1,0 +1,38 @@
+{
+  "transport": "app-tls",
+  "mock": true,
+  "hai": "not_called",
+  "platform": "win32",
+  "node": "24.22.3",
+  "evidence": "application-cli-B-ECS-A",
+  "status": "pass",
+  "checks": [
+    {"check": "pinned-mtls-and-mock-identity", "status": "pass"},
+    {"check": "missing-and-wrong-local-token", "status": "pass"},
+    {"check": "missing-client-certificate", "status": "pass"},
+    {"check": "wrong-server-pin", "status": "pass"},
+    {"check": "wrong-server-name", "status": "pass"},
+    {"check": "wrong-ca", "status": "pass"},
+    {"check": "plaintext-not-accepted-by-tls", "status": "pass"},
+    {"check": "bridge-token-at-a", "status": "pass"},
+    {"check": "route-and-method-limits", "status": "pass"},
+    {"check": "json-unicode", "status": "pass"},
+    {"check": "unicode-sse-incremental", "status": "pass"},
+    {"check": "four-concurrent-sse", "status": "pass"},
+    {"check": "cancel-cleans-up-upstream", "status": "pass"},
+    {"check": "status-429-no-replay", "status": "pass"},
+    {"check": "status-503-no-replay", "status": "pass"},
+    {"check": "upstream-stall-and-disconnect", "status": "pass"},
+    {"check": "owned-link-interruption-recovery-no-replay", "status": "pass"},
+    {"check": "final-health", "status": "pass"},
+    {"check": "automatic-retry-observed", "status": "pass"},
+    {"check": "owned-http-port-released", "status": "pass"},
+    {"check": "owned-tls-tunnel-port-released", "status": "pass"}
+  ],
+  "not_checked": [
+    "A_outer_link_recovery",
+    "VPN_sleep_resume",
+    "real_HAI",
+    "real_AI_tool_session"
+  ]
+}

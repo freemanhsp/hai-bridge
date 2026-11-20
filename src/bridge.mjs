@@ -17,7 +17,7 @@ export function stripHeaders(headers, response = false) {
   return Object.fromEntries(Object.entries(headers).filter(([name]) => !blocked.has(name.toLowerCase())));
 }
 
-function tokenMatches(actual, expected) {
+export function tokenMatches(actual, expected) {
   if (typeof actual !== 'string') return false;
   const hash = value => createHash('sha256').update(value).digest();
   return timingSafeEqual(hash(actual), hash(expected));

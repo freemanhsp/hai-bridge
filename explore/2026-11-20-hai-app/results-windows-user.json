@@ -1,0 +1,27 @@
+{
+  "transport": "app-tls",
+  "mock": false,
+  "version": "0.4.0",
+  "platform": "win32",
+  "node": "24.22.3",
+  "evidence": "application-cli-real-HAI-B-ECS-A",
+  "status": "pass",
+  "hai": "inference_ok",
+  "inference": "completed",
+  "checks": [
+    { "check": "pinned-mtls-ready", "status": "pass" },
+    { "check": "real-model-list", "status": "pass" },
+    { "check": "real-responses-sse-completed", "status": "pass" },
+    { "check": "owned-http-port-released", "status": "pass" },
+    { "check": "owned-tls-tunnel-port-released", "status": "pass" }
+  ],
+  "not_checked": [
+    "WSL_unless_run_in_WSL",
+    "A_outer_link_recovery",
+    "VPN_sleep_resume",
+    "real_AI_tool_session",
+    "long_term_stability"
+  ],
+  "models": { "count": 14, "configured_model_available": true },
+  "usage": { "input_tokens": 11, "output_tokens": 5 }
+}

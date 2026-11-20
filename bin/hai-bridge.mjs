@@ -16,17 +16,20 @@ import { initializeApplicationPublisher, initializeApplicationClient, loadApplic
   DEFAULT_APP_SERVER_ROOT, DEFAULT_APP_CLIENT_CONFIG, APPLICATION_TRANSPORT } from '../src/app-config.mjs';
 import { runApplication } from '../src/app-runtime.mjs';
 import { checkApplicationClient } from '../src/app-checks.mjs';
+import { tryHai } from '../src/hai-trial.mjs';
 
 const HELP = `HAI Bridge MVP — Node.js 22+
 
   version      [--json] (also --version / -v)
-  init-app     --mock --ssh-target USER@ECS --identity-file PATH --known-hosts-file PATH
+  init-app     (--mock | --hai --upstream-url URL --upstream-auth-file PATH --model MODEL)
+               --ssh-target USER@ECS --identity-file PATH --known-hosts-file PATH
                [--out DIRECTORY] [--app-port PORT] [--relay-port PORT] [--ssh-port PORT] [--max-retries N]
-  init-app-client --mock --pairing-dir DIRECTORY --ssh-target USER@ECS --identity-file PATH --known-hosts-file PATH
+  init-app-client (--mock | --hai) --pairing-dir DIRECTORY --ssh-target USER@ECS --identity-file PATH --known-hosts-file PATH
                   [--out PATH] [--local-port PORT] [--tunnel-port PORT] [--relay-port PORT] [--ssh-port PORT] [--max-retries N]
   publish-app  --server-config PATH [--json]
   connect-app  [--client-config PATH] [--json]
   check-app    --client-config PATH --out PATH [--interrupt-ssh] [--json]
+  try-hai      --client-config PATH --out PATH [--infer] [--json] (owns B connection; --infer is billable)
   init-server  [--server-config PATH] [--upstream-url URL] [--upstream-auth-file PATH]
   pair         --ssh-target USER@MAC [--out PATH] [--local-port PORT] [--model MODEL]
   serve        [--server-config PATH]
@@ -53,8 +56,9 @@ Credentials are not printed. 'probe --infer' is billable with a real upstream; d
 Offline doctor never connects to SSH/HAI or changes trust; it briefly checks local port binding.
 dev starts only local mock services (default port 18090); config is temporary unless --out is set.
 check-lifecycle is MOCK ONLY and owns its SSH; --interrupt-ssh intentionally stops that child to test recovery.
-Application TLS commands are MOCK ONLY; A/B use outbound ECS SSH, never Mac system login.
-Application init needs OpenSSL on A only. B imports a private short-lived TLS pairing; HAI is not read.
+Application TLS supports isolated --mock or explicit --hai; A/B use outbound ECS SSH, never Mac system login.
+check-app stays MOCK ONLY. --hai needs a new pairing and keeps all HAI credentials on A.
+Application init needs OpenSSL on A only. B imports a private short-lived TLS pairing; never upload its keys.
 `;
 
 async function main() {
@@ -69,7 +73,7 @@ async function main() {
   const userArgs = separator === -1 ? [] : raw.slice(separator + 1);
   const options = separator === -1 ? raw : raw.slice(0, separator);
   const { values, positionals } = parseArgs({ args: options, allowPositionals: true, options: {
-    help: { type: 'boolean', short: 'h' }, infer: { type: 'boolean' }, mock: { type: 'boolean' },
+    help: { type: 'boolean', short: 'h' }, infer: { type: 'boolean' }, mock: { type: 'boolean' }, hai: { type: 'boolean' },
     offline: { type: 'boolean' }, json: { type: 'boolean' }, port: { type: 'string' },
     'interrupt-ssh': { type: 'boolean' },
     'server-config': { type: 'string' }, 'client-config': { type: 'string' },
@@ -87,17 +91,19 @@ async function main() {
     console.log(HELP); return;
   }
   if (positionals.length) throw new Error('Unexpected positional arguments; pass Codex arguments after --');
-  if (['init-app', 'init-app-client', 'publish-app', 'connect-app', 'check-app'].includes(command)) {
-    const allowed = command === 'init-app' ? ['mock', 'ssh-target', 'identity-file', 'known-hosts-file', 'out', 'app-port', 'relay-port', 'ssh-port', 'max-retries']
-      : command === 'init-app-client' ? ['mock', 'ssh-target', 'identity-file', 'known-hosts-file', 'pairing-dir', 'out', 'local-port', 'tunnel-port', 'relay-port', 'ssh-port', 'max-retries']
+  if (['init-app', 'init-app-client', 'publish-app', 'connect-app', 'check-app', 'try-hai'].includes(command)) {
+    const allowed = command === 'init-app' ? ['mock', 'hai', 'upstream-url', 'upstream-auth-file', 'model', 'ssh-target', 'identity-file', 'known-hosts-file', 'out', 'app-port', 'relay-port', 'ssh-port', 'max-retries']
+      : command === 'init-app-client' ? ['mock', 'hai', 'ssh-target', 'identity-file', 'known-hosts-file', 'pairing-dir', 'out', 'local-port', 'tunnel-port', 'relay-port', 'ssh-port', 'max-retries']
       : command === 'publish-app' ? ['server-config', 'json']
-      : command === 'connect-app' ? ['client-config', 'json'] : ['client-config', 'out', 'interrupt-ssh', 'json'];
+      : command === 'connect-app' ? ['client-config', 'json']
+      : command === 'try-hai' ? ['client-config', 'out', 'infer', 'json'] : ['client-config', 'out', 'interrupt-ssh', 'json'];
     if (userArgs.length || Object.keys(values).some(key => !allowed.includes(key))) throw new Error('Unsupported application command options');
     const event = value => console.log(values.json ? JSON.stringify(value) :
-      (value.event === 'application' ? 'MOCK application ' + value.role + ': ' + value.state + (value.loopback_port ? ' (loopback ' + value.loopback_port + '; run doctor to verify)' : '')
+      (value.event === 'application' ? (value.mock ? 'MOCK' : 'HAI') + ' application ' + value.role + ': ' + value.state + (value.loopback_port ? ' (loopback ' + value.loopback_port + '; run doctor to verify)' : '')
         : 'SSH ' + value.direction + ': ' + value.state + (value.reason ? ' (' + value.reason + ')' : '') + (value.hint ? '; ' + value.hint : '')));
     if (command === 'init-app' || command === 'init-app-client') {
-      const appOptions = { mock: values.mock, sshTarget: values['ssh-target'], identityFile: values['identity-file'],
+      const appOptions = { mock: values.mock, hai: values.hai, upstreamUrl: values['upstream-url'], upstreamAuthFile: values['upstream-auth-file'], model: values.model,
+        sshTarget: values['ssh-target'], identityFile: values['identity-file'],
         knownHostsFile: values['known-hosts-file'], pairingDirectory: values['pairing-dir'],
         appPort: values['app-port'] === undefined ? undefined : Number(values['app-port']),
         localPort: values['local-port'] === undefined ? undefined : Number(values['local-port']),
@@ -107,9 +113,15 @@ async function main() {
         maxRetries: values['max-retries'] === undefined ? undefined : Number(values['max-retries']) };
       if (command === 'init-app') {
         const result = await initializeApplicationPublisher(values.out || DEFAULT_APP_SERVER_ROOT, appOptions);
-        console.log('MOCK application server configuration: ' + result.serverFile);
+        console.log((values.hai ? 'HAI' : 'MOCK') + ' application server configuration: ' + result.serverFile);
         console.log('Private B-only TLS pairing directory: ' + result.clientDirectory + '; do not upload publicly.');
-      } else console.log('MOCK application client configuration: ' + await initializeApplicationClient(values.out || DEFAULT_APP_CLIENT_CONFIG, appOptions));
+      } else console.log((values.hai ? 'HAI' : 'MOCK') + ' application client configuration: ' + await initializeApplicationClient(values.out || DEFAULT_APP_CLIENT_CONFIG, appOptions));
+    } else if (command === 'try-hai') {
+      if (values.infer) console.error('BILLABLE: one short real HAI Responses request; no model-request retries or prompt/output logging.');
+      const result = await tryHai({ clientFile: values['client-config'], out: values.out, infer: values.infer }, { onEvent: event });
+      console.log(values.json ? JSON.stringify({ event: 'trial_summary', status: result.report.status, report_file: result.destination })
+        : 'HAI trial: ' + result.report.status + '; report: ' + result.destination);
+      process.exitCode = ['fail', 'interrupted'].includes(result.report.status) ? 1 : 0;
     } else if (command === 'check-app') {
       const result = await checkApplicationClient({ clientFile: values['client-config'], out: values.out,
         interruptSsh: values['interrupt-ssh'] }, { onEvent: event });
@@ -124,7 +136,7 @@ async function main() {
     }
     return;
   }
-  if (['pairing-dir', 'app-port', 'tunnel-port', 'max-retries'].some(key => values[key] !== undefined)) throw new Error('Application options require an application command');
+  if (['hai', 'pairing-dir', 'app-port', 'tunnel-port', 'max-retries'].some(key => values[key] !== undefined)) throw new Error('Application options require an application command');
   const serverFile = values['server-config'] || DEFAULT_SERVER_CONFIG;
   const clientFile = values['client-config'] || DEFAULT_CLIENT_CONFIG;
   const publisherFile = values['publisher-config'] || DEFAULT_PUBLISHER_CONFIG;
@@ -230,8 +242,9 @@ async function main() {
   }
   if (!['connect', 'doctor', 'probe', 'codex'].includes(command)) throw new Error(`Unknown command: ${command}`);
   const config = await loadToolClient(clientFile);
-  if (config.transport === APPLICATION_TRANSPORT && ['connect', 'codex'].includes(command)) throw new Error('Mock application config requires connect-app; real AI tool sessions are not implemented');
-  if (config.transport === APPLICATION_TRANSPORT && values['base-url']) throw new Error('Mock application tools do not accept a base URL override');
+  if (config.transport === APPLICATION_TRANSPORT && command === 'connect') throw new Error('Application config requires connect-app');
+  if (config.transport === APPLICATION_TRANSPORT && command === 'codex' && config.mode !== 'hai') throw new Error('Real AI tool sessions require a dedicated --hai pairing, not mock');
+  if (config.transport === APPLICATION_TRANSPORT && values['base-url']) throw new Error('Application tools do not accept a base URL override');
   const origin = clientOrigin(config, values['base-url']);
   if (command === 'connect') {
     if (config.localOnly) throw new Error('Local-only dev configuration does not use SSH; run doctor or probe directly');
@@ -239,15 +252,21 @@ async function main() {
   }
   if (command === 'doctor' || (command === 'probe' && !values.infer)) {
     const result = await diagnose(config, origin);
-    if (config.transport === APPLICATION_TRANSPORT && (!result.mock || !result.configured_model_available)) throw new Error('Expected the fixed mock application upstream');
+    if (config.transport === APPLICATION_TRANSPORT && (result.mock !== (config.mode === 'mock') || !result.configured_model_available)) throw new Error('Upstream mode or configured model does not match the application pairing');
     console.log(JSON.stringify(result, null, 2)); return;
   }
   if (command === 'probe') {
     if (config.transport === APPLICATION_TRANSPORT) {
       const result = await diagnose(config, origin);
-      if (!result.mock || !result.configured_model_available) throw new Error('Refusing POST to a non-mock application upstream');
+      if (result.mock !== (config.mode === 'mock') || !result.configured_model_available) throw new Error('Refusing POST: application upstream mode or model mismatch');
+      if (config.mode === 'hai') console.error('BILLABLE: one short real HAI Responses request.');
     }
     console.log(JSON.stringify(await probeInference(config, origin, values.model ?? (config.transport === APPLICATION_TRANSPORT ? config.model : undefined)), null, 2)); return;
+  }
+  if (config.transport === APPLICATION_TRANSPORT) {
+    const result = await diagnose(config, origin);
+    if (result.mock || !result.configured_model_available) throw new Error('Refusing Codex: real HAI model is not available');
+    console.error('BILLABLE: Codex uses real HAI through A. Use only a non-sensitive test workspace for the first session.');
   }
   process.exitCode = await runCodex(config, origin, userArgs);
 }

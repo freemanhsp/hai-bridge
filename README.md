@@ -1,21 +1,21 @@
 # HAI Bridge
 
-2026-11-20 更新：本机管理策略已关闭 Mac Remote Login，不再推进依赖系统登录的链路。0.3.0 已封装[应用双向 TLS CLI](docs/application-cli.md)：A 用 publish-app、B 用 connect-app，各自前台运行应用和到 ECS 的单条出站 SSH，无需云端部署我们的程序。当前仅 mock，真实 HAI 尚未接入。以下原有 SSH CLI 保留为历史实现，不应为了使用它重新开启被策略关闭的功能。
+2026-11-20 更新：本机管理策略已关闭 Mac Remote Login，不再推进依赖系统登录的链路。当前 0.4.0 新增显式 --hai 的[最小真实接入](docs/real-hai.md)，保留隔离的 mock 模式：A 用 publish-app、B 用 connect-app，各自运行应用和到 ECS 的单条出站 SSH，无需云端部署我们的程序。Windows 已收到mock21/21及真实HAI流式调用5/5通过的完整用户报告；WSL、实际工具会话与长期恢复另行验证。以下原有 SSH CLI 保留为历史实现，不应为了使用它重新开启被策略关闭的功能。
 
 让 B 上的 AI 工具经 SSH 访问 A 上已经认证的 HAI 代理。当前目标是 Mac A + Windows 11 原生 / WSL B，先验证 Codex 的完整请求与流式返回。
 
 ```text
-B 的 Codex → B:16655 → SSH → A:16656 桥接 → A:6655 HAI → 公司平台
+B 本地工具 → B HTTP → 双向 TLS / ECS 出站 SSH 中转 → A TLS bridge → A:6655 HAI → 公司平台
 ```
 
-HAI key 和公司登录凭证留在 A。B 的配对文件只有独立的桥接 token。运行需要 Node.js 22+，没有第三方 npm 依赖。
+HAI key 和公司登录凭证留在 A。B 的私有配对含独立桥接 token 与 B 短期 TLS 身份，不能上传 GitHub。运行需要 Node.js 22+，没有第三方 npm 依赖。
 
 ## 安装与版本
 
 源码工作区运行 npm run pack 可生成本地 .tgz 包和 SHA-256，方便将同一份代码交付其他设备。没有发布到 npm；安装包不含 .local、mydocs、explore 或凭证。
 
 ~~~sh
-npm install --global --offline --ignore-scripts --no-audit --no-fund ./hai-bridge-0.3.0.tgz
+npm install --global --offline --ignore-scripts --no-audit --no-fund ./hai-bridge-0.4.0.tgz
 hai-bridge --version
 hai-bridge dev --port 0
 ~~~
@@ -32,7 +32,11 @@ hai-bridge dev --port 0
 | `.local/` | 本机配置、配对文件和 token | 忽略 |
 | `src/`、`bin/`、`test/` | MVP 实现、入口和测试 | 纳入 |
 
-## 在 A 上启动
+## 历史系统 SSH 实现（不继续部署）
+
+以下至“纯本机开发”前的命令保留供历史查阅。当前请按[真实 HAI](docs/real-hai.md)或[应用 TLS mock](docs/application-cli.md)使用；不要开启 Mac Remote Login。
+
+### 在 A 上启动（历史）
 
 保持原来的 `hai proxy start` 运行。默认从当前用户的 `~/.codex/auth.json` 读取 `OPENAI_API_KEY`，不会导出其中的公司登录令牌。
 

@@ -66,7 +66,21 @@ export async function probeInference(config, origin, model = 'gpt-6-luna') {
     event_types: [...eventTypes], input_tokens: usage?.input_tokens, output_tokens: usage?.output_tokens };
 }
 
-export function codexArguments(config, origin, userArgs) {
+function hasCodexConfig(args, key) {
+  return args.some((arg, index) => {
+    const value = ['-c', '--config'].includes(arg) ? args[index + 1]
+      : arg.startsWith('--config=') ? arg.slice('--config='.length)
+      : arg.startsWith('-c') ? arg.slice(2) : undefined;
+    return typeof value === 'string' && value.split('=', 1)[0].trim() === key;
+  });
+}
+
+export function codexArguments(config, origin, userArgs, { platform = process.platform } = {}) {
+  const subcommand = userArgs.findIndex(value => ['exec', 'e', 'review', 'resume', 'fork'].includes(value));
+  const explicitPermissions = userArgs.some(arg => ['-s', '--sandbox', '--permission-profile', '--approve-for-me',
+    '--full-auto', '--dangerously-bypass-approvals-and-sandbox'].includes(arg)
+    || arg.startsWith('--sandbox=') || arg.startsWith('--permission-profile=') || /^-s.+/.test(arg))
+    || hasCodexConfig(userArgs, 'sandbox_mode');
   const values = {
     model_provider: 'hai-bridge', model: config.model,
     'model_providers.hai-bridge.name': 'HAI Bridge',
@@ -75,18 +89,26 @@ export function codexArguments(config, origin, userArgs) {
     'model_providers.hai-bridge.env_key': 'HAI_BRIDGE_TOKEN',
     'model_providers.hai-bridge.requires_openai_auth': false,
     'model_providers.hai-bridge.supports_websockets': false,
-    web_search: 'disabled', sandbox_mode: 'workspace-write', approval_policy: 'on-request',
+    web_search: 'disabled', approval_policy: 'on-request',
     'feedback.enabled': false, 'analytics.enabled': false,
   };
+  // Windows 0.171.0 was verified with MXC + the explicit workspace-write CLI flag.
+  // Never replace an explicit backend, permission profile or read-only selection.
+  if (platform === 'win32' && !hasCodexConfig(userArgs, 'windows.sandbox')) values['windows.sandbox'] = 'mxc';
+  const permissionArgs = [];
+  if (!explicitPermissions) {
+    // review has no local --sandbox option; retain its config-based compatibility path.
+    if (subcommand !== -1 && userArgs[subcommand] === 'review') values.sandbox_mode = 'workspace-write';
+    else permissionArgs.push('--sandbox', 'workspace-write');
+  }
   // Spawn arguments are never interpolated into shell command text.
   const overrides = Object.entries(values).flatMap(([key, value]) => ['-c', `${key}=${JSON.stringify(value)}`]);
   // Keep the token in this invocation's environment instead of a pre-existing shared daemon.
   const globalArgs = userArgs.includes('--no-daemon') ? [] : ['--no-daemon'];
-  const subcommand = userArgs.findIndex(value => ['exec', 'e', 'review', 'resume', 'fork'].includes(value));
   if (subcommand !== -1) {
-    return [...globalArgs, ...userArgs.slice(0, subcommand + 1), ...overrides, ...userArgs.slice(subcommand + 1)];
+    return [...globalArgs, ...userArgs.slice(0, subcommand + 1), ...overrides, ...permissionArgs, ...userArgs.slice(subcommand + 1)];
   }
-  return [...globalArgs, ...overrides, ...userArgs];
+  return [...globalArgs, ...overrides, ...permissionArgs, ...userArgs];
 }
 
 async function executableInvocation(env) {
@@ -124,7 +146,7 @@ export async function runCodex(config, origin, userArgs, env = process.env, {
   const invocation = await executableInvocation(env);
   if (signal?.aborted) return 130;
   return await new Promise((resolve, reject) => {
-    const child = spawnProcess(invocation.command, [...invocation.prefix, ...codexArguments(config, origin, userArgs)], {
+    const child = spawnProcess(invocation.command, [...invocation.prefix, ...codexArguments(config, origin, userArgs, { platform })], {
       stdio: 'inherit', shell: false, env: { ...env, HAI_BRIDGE_TOKEN: config.token }, ...(cwd ? { cwd } : {}),
     });
     let closed = false, exited = false, stopped = false, timer;

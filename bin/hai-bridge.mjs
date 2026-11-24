@@ -18,7 +18,7 @@ import { runApplication } from '../src/app-runtime.mjs';
 import { formatApplicationEvent } from '../src/app-status.mjs';
 import { checkApplicationClient } from '../src/app-checks.mjs';
 import { tryHai } from '../src/hai-trial.mjs';
-import { setupClient, setupPublisher, defaultPublisherFile } from '../src/profiles.mjs';
+import { setupClient, rememberClient, setupPublisher, defaultPublisherFile } from '../src/profiles.mjs';
 import { startSession } from '../src/session.mjs';
 import { inspectApplication, formatApplicationInspection } from '../src/app-inspect.mjs';
 import { initializeDevicePublisher, initializeDeviceClient } from '../src/device-config.mjs';
@@ -30,6 +30,7 @@ const HELP = `HAI Bridge MVP — Node.js 22+
 
   version      [--json] (also --version / -v)
   setup-client --client-config EXISTING_REAL_CLIENT [--profile-dir DIRECTORY]
+  use-client   --client-config EXISTING_REAL_CLIENT [--profile-dir DIRECTORY] (remember path; no identity copy)
   setup-publisher --server-config PATH [--profile-dir DIRECTORY]
   start        [--client-config PATH] [--profile-dir DIRECTORY] [--project DIRECTORY] -- [CODEX ARGS...]
   init-device  (--mock | --hai --upstream-url URL --upstream-auth-file PATH --model MODEL)
@@ -89,10 +90,12 @@ V2 app-device: B generates its own long-lived key, A approves its fingerprint; n
 V2 invites expire in 15 minutes; transfer privately. A server leaf renews automatically; roots need explicit repair.
 V2 uses the same publish-app/connect-app/start commands, with an explicit new config; v1 is not migrated.
 setup-client copies a real B profile privately to ~/.hai-bridge; setup-publisher remembers only A's config path.
+use-client selects an existing real B config for start/haib; preserves old defaults and all keys.
 Source checkout: npm run setup:publisher -- --server-config PATH (once), then npm run publish.
 publish-app stays in foreground; forward_ready confirms only the relay listener, not B-to-HAI health.
 start owns B connection + one Codex invocation; exit closes only its resources. Stop old connect-app first.
 start keeps the project as Codex working directory; it does not install a background service.
+haib is shorthand for hai-bridge start. Windows defaults to MXC + workspace-write; explicit sandbox choices are preserved.
 `;
 
 async function main() {
@@ -190,11 +193,15 @@ async function main() {
     return;
   }
   if (['invitation', 'label', 'device-id'].some(key => values[key] !== undefined)) throw new Error('Device options require a device command');
-  if (['setup-client', 'setup-publisher', 'start'].includes(command)) {
-    const allowed = command === 'setup-client' ? ['client-config', 'profile-dir']
+  if (['setup-client', 'use-client', 'setup-publisher', 'start'].includes(command)) {
+    const allowed = ['setup-client', 'use-client'].includes(command) ? ['client-config', 'profile-dir']
       : command === 'setup-publisher' ? ['server-config', 'profile-dir'] : ['client-config', 'profile-dir', 'project'];
     if (Object.keys(values).some(key => !allowed.includes(key)) || (command !== 'start' && userArgs.length)) throw new Error('Unsupported daily startup options');
-    if (command === 'setup-client') {
+    if (command === 'use-client') {
+      console.log('Private client default: ' + await rememberClient(values['client-config'], values['profile-dir']));
+      console.log('配置路径已记住；项目目录运行 haib（Windows: haib.cmd）或 hai-bridge start。');
+      console.log('没有复制/更新凭据、重新登记设备、启动服务或发送模型请求；请保留原配置和设备目录。');
+    } else if (command === 'setup-client') {
       console.log('Private daily client: ' + await setupClient(values['client-config'], values['profile-dir']));
       console.log('Run hai-bridge start from your project. No HAI credentials were copied; v2 remembers this device key location, v1 retains pairing expiry.');
     } else if (command === 'setup-publisher') {

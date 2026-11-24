@@ -287,7 +287,11 @@ test('Windows termination targets only own live child; repeated stops and exited
   const signals = new EventEmitter(), abort = new AbortController(); let treeStops = 0;
   const child = new EventEmitter(); child.pid = 123456; child.kill = () => assert.fail('tree handler should own termination');
   const result = runCodex({ token: 'synthetic-child-token', model: 'session-model' }, 'http://127.0.0.1:18084', [], syntheticEnv, {
-    platform: 'win32', signals, signal: abort.signal, spawnProcess: () => child,
+    platform: 'win32', signals, signal: abort.signal, spawnProcess: (_command, args) => {
+      assert.ok(args.includes('windows.sandbox="mxc"'));
+      assert.equal(args[args.indexOf('--sandbox') + 1], 'workspace-write');
+      return child;
+    },
     terminateTree(value) { assert.equal(value, child); treeStops++; process.nextTick(() => child.emit('close', null)); } });
   await new Promise(resolve => setImmediate(resolve));
   signals.emit('SIGINT'); abort.abort(); signals.emit('SIGTERM');
@@ -335,4 +339,13 @@ test('offline installed package can setup and start one synthetic Codex off-sour
   assert.equal(captured.cwd, project); assert.equal(captured.hasToken, true); assert.ok(captured.args.includes('--help'));
   assert.match(stderr, /HAI session: stopped/); assert.equal((stdout + stderr + JSON.stringify(captured.args)).includes(config.token), false);
   await released(config);
+  // New alias + config pointer uses exactly the same owner, cwd and cleanup path.
+  await execute(process.execPath, [cli, 'use-client', '--client-config', file, '--profile-dir', profile], { cwd: project });
+  await execute(process.execPath, [path.join(prefix, 'node_modules/hai-bridge/bin/haib.mjs'), '--profile-dir', profile, '--', 'exec', '--ignore-user-config', '--help'],
+    { cwd: project, timeout: 20000, env: { ...process.env, PATH: shimRoot + path.delimiter + process.env.PATH, HAI_CODEX_EXECUTABLE: codex, HAI_TEST_REPORT: report } });
+  const short = JSON.parse(await fs.readFile(report));
+  assert.equal(short.cwd, project); assert.equal(short.hasToken, true);
+  assert.ok(short.args.indexOf('--sandbox') > short.args.indexOf('exec'));
+  assert.equal(short.args[short.args.indexOf('--sandbox') + 1], 'workspace-write');
+  assert.equal(JSON.stringify(short.args).includes(config.token), false); await released(config);
 });

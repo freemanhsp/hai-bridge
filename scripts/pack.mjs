@@ -8,13 +8,13 @@ import { promisify } from 'node:util';
 
 const execute = promisify(execFile);
 const sourceRoot = fileURLToPath(new URL('../', import.meta.url));
-const allowed = /^(package[.]json|README[.]md|bin\/hai-bridge[.]mjs|src\/[A-Za-z0-9_-]+[.]mjs|docs\/[A-Za-z0-9_-]+[.]md)$/;
+const allowed = /^(package[.]json|README[.]md|bin\/(?:hai-bridge|haib)[.]mjs|src\/[A-Za-z0-9_-]+[.]mjs|docs\/[A-Za-z0-9_-]+[.]md)$/;
 
 export function validatePackedFiles(files) {
   if (!Array.isArray(files) || files.some(file => !allowed.test(file.path))) {
     throw new Error('Package contains files outside the runtime/documentation allowlist');
   }
-  for (const required of ['package.json', 'README.md', 'bin/hai-bridge.mjs', 'src/version.mjs', 'src/dev.mjs']) {
+  for (const required of ['package.json', 'README.md', 'bin/hai-bridge.mjs', 'bin/haib.mjs', 'src/version.mjs', 'src/dev.mjs']) {
     if (!files.some(file => file.path === required)) throw new Error('Package is missing a required runtime file');
   }
 }

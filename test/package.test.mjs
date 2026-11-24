@@ -46,7 +46,7 @@ test('version comes from package metadata and works without config from unrelate
 });
 
 test('pack allowlist rejects unexpected files and missing runtime entrypoints', () => {
-  const required = ['package.json', 'README.md', 'bin/hai-bridge.mjs', 'src/version.mjs', 'src/dev.mjs'].map(path => ({ path }));
+  const required = ['package.json', 'README.md', 'bin/hai-bridge.mjs', 'bin/haib.mjs', 'src/version.mjs', 'src/dev.mjs'].map(path => ({ path }));
   validatePackedFiles(required);
   for (const path of ['.local/client.json', 'mydocs/note.md', 'explore/test.mjs', 'test/dev.test.mjs',
     'scripts/pack.mjs', 'bin/unknown.mjs', '.env', 'src/.secret.mjs', 'src/private.key', '../src/version.mjs']) {
@@ -91,6 +91,7 @@ test('actual offline pack excludes private assets, supplies SHA-256 and preserve
   assert.equal(release.version, VERSION);
   assert.equal(release.node_required, '>=22');
   assert.ok(release.files.includes('src/bridge.mjs'));
+  assert.ok(release.files.includes('bin/haib.mjs'));
   for (const file of ['src/device-config.mjs', 'src/device-auth.mjs', 'src/device-transport.mjs', 'src/device-registry.mjs',
     'src/device-identity.mjs', 'src/device-store.mjs', 'src/device-enrollment.mjs', 'src/device-checks.mjs']) assert.ok(release.files.includes(file));
   assert.equal(release.files.some(file => /^([.]|mydocs|test|explore|scripts)/.test(file)), false);
@@ -133,6 +134,7 @@ test('actual tarball installs offline into isolated prefix and its bin runs away
   const installedCli = path.join(packageRoot, 'bin', 'hai-bridge.mjs');
   const shim = process.platform === 'win32' ? path.join(prefix, 'hai-bridge.cmd') : path.join(prefix, 'bin', 'hai-bridge');
   await fs.access(shim);
+  await fs.access(process.platform === 'win32' ? path.join(prefix, 'haib.cmd') : path.join(prefix, 'bin', 'haib'));
   const output = await execute(process.execPath, [installedCli, '--version'], { cwd });
   assert.equal(output.stdout.trim(), 'hai-bridge ' + VERSION);
   const { stdout: help } = await execute(process.execPath, [installedCli, '--help'], { cwd });
@@ -141,6 +143,8 @@ test('actual tarball installs offline into isolated prefix and its bin runs away
   if (process.platform !== 'win32') {
     const { stdout } = await execute(shim, ['--version'], { cwd });
     assert.equal(stdout.trim(), 'hai-bridge ' + VERSION);
+    const shortHelp = await execute(path.join(prefix, 'bin', 'haib'), ['--help'], { cwd });
+    assert.match(shortHelp.stdout, /haib is shorthand/);
   }
 });
 

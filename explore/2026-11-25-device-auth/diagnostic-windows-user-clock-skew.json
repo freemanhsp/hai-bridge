@@ -1,0 +1,23 @@
+{
+  "mock": true,
+  "hai": "not_called",
+  "controls": [
+    {
+      "stage": "challenge",
+      "http_status": 200,
+      "server_clock_a_minus_b_ms": 1465,
+      "expires_in_ms": 121853,
+      "expected_max_ms": 120000,
+      "expiry_within_b_bounds": false
+    }
+  ],
+  "stage": "finished",
+  "tls_verified": true,
+  "local_models_http_status": 503,
+  "authentication_unavailable": true,
+  "mock_identity_ok": false,
+  "active_streams": null,
+  "runtime_exit_code": 0,
+  "http_port_released": true,
+  "tunnel_port_released": true
+}

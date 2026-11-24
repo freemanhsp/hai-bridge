@@ -1,16 +1,20 @@
 # HAI Bridge
 
-2026-11-21 更新：当前源码版本0.5.0，新增 Mac 的 npm run publish 快捷启动与中文状态提示；forward_ready 仅确认中继监听，不代表完整链路就绪。本机回归137/137通过。Windows mock21/21及0.4.0真实HAI流式调用5/5为独立用户报告；0.5.0单命令封装、WSL、实际工具任务与异常恢复仍待验收。下一批优先补[进程清理与分层诊断](docs/next-development.md)，不将残留问题视为已修复。
+2026-11-25 更新：0.5.1 新增持久短命令 haib、use-client 原配置路径选择，以及 Windows workspace-write / MXC 默认启动参数。用户已验证 Windows v2 真实 Codex 本地读写/修复/4项测试与临时快捷函数；新包 Windows 安装/入口仍需单独验收。[升级现有 Windows](docs/windows-upgrade.md)，不重建配置或重新登记。
+
+[个人设备认证 v2](docs/device-auth.md)支持 B 本机长期密钥、A 批准/撤销、自动会话刷新与 A 服务器证书续订；现有 v1 与[应用离线诊断](docs/application-inspection.md)保留。WSL/其他 B 系统、VPN/休眠和长期恢复仍待独立验收。
 
 让 B 上的 AI 工具经 SSH 访问 A 上已经认证的 HAI 代理。当前目标是 Mac A + Windows 11 原生 / WSL B，先验证 Codex 的完整请求与流式返回。
 
 Mac 管理策略已关闭 Remote Login；当前不需要 Mac SSH 服务，也不在 ECS 部署 Bridge 应用。不要为了执行历史方案重新开启系统登录。
 
 ```text
-B 本地工具 → B HTTP → 双向 TLS / ECS 出站 SSH 中转 → A TLS bridge → A:6655 HAI → 公司平台
+B 本地工具 → B HTTP → 应用 TLS / ECS 出站 SSH 中转 → A TLS bridge → A:6655 HAI → 公司平台
 ```
 
-HAI key 和公司登录凭证留在 A。B 的私有配对含独立桥接 token 与 B 短期 TLS 身份，不能上传 GitHub。运行需要 Node.js 22+，没有第三方 npm 依赖。
+HAI key 和公司登录凭证留在 A。v1 B 私有配对含短期 TLS 身份；v2 B 私钥在 B 本机生成，A 只保留公钥。私有身份/邀请都不能上传 GitHub。运行需要 Node.js 22+，没有第三方 npm 依赖。
+
+v2 首次流程：A init-device → 私下传15分钟邀请 → B init-device-client / enroll-device → A 核对指纹 approve-device → B check-device 集中模拟验收。日常沿用 publish-app / connect-app / start。完整可复制步骤和 Windows 脚本见[新设备认证说明](docs/device-auth.md)；先独立 mock，再安排真实切换，不直接改旧配置。
 
 ## Mac 日常启动
 
@@ -28,22 +32,22 @@ npm run publish
 
 源码工作区运行 npm run pack 可生成本地 .tgz 包和 SHA-256，方便将同一份代码交付其他设备。没有发布到 npm；安装包不含 .local、mydocs、explore 或凭证。
 
-既有安装包不会自动包含新提交；同为0.5.0也可能是不同构建。更新交付时从干净提交重新打包并核对 commit/哈希，本轮文档更新不代表已经生成或安装新包。
+既有安装包不会自动更新。首个0.5.1候选包在提交前构建，git_dirty=true如实保留；本轮源码按主题本地归档，不自动推送。提交后可从干净工作区生成新包，核对各自release.json、Git提交与SHA-256；不覆盖或把旧候选包改写成干净构建。
 
 ~~~sh
-npm install --global --offline --ignore-scripts --no-audit --no-fund ./hai-bridge-0.5.0.tgz
+npm install --global --offline --ignore-scripts --no-audit --no-fund ./hai-bridge-0.5.1.tgz
 hai-bridge --version
 hai-bridge dev --port 0
 ~~~
 
-先核对可信来源的校验值再安装。Windows 可用 npm.cmd / hai-bridge.cmd，WSL 独立安装。现有 node bin/hai-bridge.mjs 在安装后可换成 hai-bridge；旧命令配置仍相对当前工作目录，新 start 默认使用个人 ~/.hai-bridge/client.json。详见 [安装说明](docs/installation.md)。
+先核对可信来源的校验值再安装。Windows 用 npm.cmd / hai-bridge.cmd / haib.cmd，WSL 独立安装。start 优先使用 use-client 保存的原配置路径，没有新指针时兼容个人 ~/.hai-bridge/client.json。详见 [安装说明](docs/installation.md)。
 
-已有成功的真实 B 配对时，一次导入后每天在测试项目目录执行：
+已有成功的真实 v2 B 设备时，升级后一次记住原配置，之后在项目目录执行：
 
 ~~~powershell
-hai-bridge.cmd setup-client --client-config 'D:\旧交付\.local\run-时间\client.json'
+hai-bridge.cmd use-client --client-config "$env:USERPROFILE\.hai-bridge-v2-hai\client.json"
 # 以下为日常使用；不要同时另开同端口 connect-app
-hai-bridge.cmd start
+haib.cmd
 ~~~
 
 start 保持 Codex 工作目录在 B 项目中，不改全局 Codex 配置；实际任务会计费。详细 Mac/Windows 步骤与一次集中检查见[日常启动](docs/daily-start.md)。
@@ -145,6 +149,6 @@ npm run check
 - [下一次开发任务](docs/next-development.md)
 - [最初的可行性探索](explore/2026-11-19-forwarding/README.md)
 
-当前应用链路的检查见[排障说明](docs/troubleshooting.md)；旧doctor --offline仅用于历史SSH/dev配置。完整文档见[索引](docs/README.md)。
+v1/app-tls 离线检查：node bin/hai-bridge.mjs inspect-app --role publisher，B改为--role client。仅检查配置/公开证书/文件元数据/本地端口，不读私钥或HAI认证、不连接云端；v2尚不支持此入口。详细参数见[离线诊断](docs/application-inspection.md)与[排障说明](docs/troubleshooting.md)；旧doctor --offline仅用于历史SSH/dev配置。完整文档见[索引](docs/README.md)。
 
-当前实现适用于本次已对齐范围内的 MVP 验证。逐用户身份认证、设备登记、图形界面和部署管理尚未实现；项目管理方式等待后续约定。
+当前实现适用于本次已对齐范围内的个人MVP：设备登记/批准/撤销、短会话和服务器叶证书续订已实现；不提供多人账号/额度隔离、GUI或后台部署管理。项目管理方式等待后续约定；下一步优先无模型权限预检、v2安全诊断与独立平台验收。

@@ -1,0 +1,43 @@
+{
+  "date": "2026-11-25",
+  "source": "assistant-curated-summary-not-raw-stdout",
+  "transport": "app-device",
+  "schema_version": 2,
+  "mode": "synthetic-loopback-only",
+  "hai": "not_called",
+  "version": "0.5.0-unreleased-worktree",
+  "git_committed": false,
+  "status": "pass",
+  "regression": { "passed": 176, "failed": 0, "new_device_tests": 18 },
+  "b_batch": { "passed": 15, "failed": 0, "evidence": "local-TCP-SSH-stub-not-ECS" },
+  "checks": [
+    "B-single-local-key-not-exported",
+    "private-once-invitation-pending-local-approval",
+    "instance-signature-and-challenge-replay-rejection",
+    "server-CA-SPKI-name-validity-and-plaintext-rejection",
+    "session-expiry-automatic-refresh-without-model-replay",
+    "Unicode-concurrent-SSE-cancellation-status-forwarding",
+    "revoked-device-old-session-and-active-stream-rejection",
+    "A-stable-key-server-leaf-renewal",
+    "near-expiry-and-expired-leaf-startup-renewal",
+    "symlink-Unix-permission-signing-key-rejection",
+    "corrupt-registry-and-write-lock-fail-closed",
+    "bounded-control-requests-and-challenges",
+    "v1-regression-and-isolated-defaults",
+    "HAI-auth-read-only-after-authorized-model-request",
+    "enrollment-owned-port-cleanup-and-foreign-listener-preservation",
+    "B-mock-batch-and-private-summary",
+    "A-service-restart-401-then-new-request-reauth-no-replay",
+    "synthetic-agent-launcher-and-local-project-boundary"
+  ],
+  "not_checked": [
+    "Windows-WSL-Linux-other-Mac-real-device-E2E",
+    "PowerShell-script-execution",
+    "Windows-ACL-protection",
+    "real-ECS-SSH-and-VPN-sleep-hard-kill-recovery",
+    "real-HAI-and-AI-tool-session",
+    "long-term-stability",
+    "root-rotation-wizard",
+    "multi-user-authorization-and-quota-isolation"
+  ]
+}

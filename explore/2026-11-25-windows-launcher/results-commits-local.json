@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-25",
+  "version": "0.5.1",
+  "source": "assistant-curated-local-regression-summary-not-raw-stdout",
+  "platform": "darwin",
+  "mock": true,
+  "hai": "not_called",
+  "real_ssh": "not_called",
+  "push": "not_requested-not_performed",
+  "code_batches": [
+    { "commit": "d1d45f6", "scope": "owned-ssh-shutdown-and-lifecycle-observers", "snapshot_tests_passed": 144, "node": "24.14.0" },
+    { "commit": "60551c3", "scope": "reject-package-lifecycle-hooks-before-npm", "snapshot_tests_passed": 145, "node": "22.22.2" },
+    { "commit": "cd4e49a", "scope": "device-authenticated-transport-and-public-only-diagnostics", "snapshot_tests_passed": 190, "node": "22.22.2" },
+    { "commit": "87c5d6f", "scope": "batched-device-acceptance-and-agent-practice", "snapshot_tests_passed": 208, "node": "22.22.2" },
+    { "commit": "d9c8511", "scope": "persistent-haib-and-windows-launch-defaults", "snapshot_tests_passed": 213, "node": "22.22.2" }
+  ],
+  "documentation_batch": "separate-commit-see-git-log",
+  "final_regressions": [
+    { "basis": "isolated-index-snapshot", "node": "22.22.2", "npm": "10.9.7", "openssl": "LibreSSL 3.3.6", "tests": 213, "pass": 213, "fail": 0, "skipped": 0, "npm_run_check": "pass" },
+    { "basis": "workspace", "node": "24.14.0", "npm": "11.9.0", "openssl": "OpenSSL 3.6.4", "tests": 213, "pass": 213, "fail": 0, "skipped": 0, "npm_run_check": "pass" }
+  ],
+  "module_syntax": { "roots": ["src", "bin", "scripts", "test"], "checked": 53, "status": "pass" },
+  "issues_observed": [
+    "restricted-loopback-listen-EPERM-rerun-in-approved-local-test-environment",
+    "npm10-directory-prepare-ignores-ignore-scripts-guarded-before-npm",
+    "LibreSSL-days-zero-fixture-replaced-with-explicit-past-certificate-dates"
+  ],
+  "preserved_candidate": {
+    "archive": "hai-bridge-0.5.1.tgz",
+    "bytes": 137238,
+    "sha256": "5c38749eb39148710a97a15b6d656e490d684cb4cb3cc8f417d73a9c83f1543f",
+    "git_commit": "fe3633f362f5eda1d3df087fc707569b44652fa1",
+    "git_dirty": true,
+    "status": "historical-not-overwritten"
+  },
+  "not_checked": [
+    "new-0.5.1-windows-install-and-haib.cmd",
+    "updated-whole-windows-acceptance-original-failure-preserved",
+    "automatic-no-model-agent-permission-preflight-not-implemented",
+    "windows-acl-and-real-ctrl-c-process-tree",
+    "real-A-revocation-and-server-leaf-renewal",
+    "A-outer-link-VPN-sleep-and-hard-kill-recovery",
+    "WSL-other-B-platforms-and-long-term-stability"
+  ]
+}

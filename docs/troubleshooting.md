@@ -1,6 +1,10 @@
 # 当前应用链路排障
 
-适用于app-tls / 0.5.0；旧Mac系统登录方案不继续部署。HAI、publisher各自前台运行，B用start或手动connect-app，勿在同端口重复启动。不修改VPN/MDM、公开转发端口或忽略证书校验来恢复。
+v2 app-device请先看[设备认证说明](device-auth.md)：pending需A核对指纹并批准；revoked需新身份/邀请；A重启后缓存会话可能先401，后续新请求自动认证（不重放模型POST）。A叶证书自动续订，根到期或签发密钥损坏需人工处理。设备状态损坏时拒绝服务；写锁不自动删除。check-device是显式mock在线批量检查，inspect-app/try-hai/check-app目前仅支持v1。
+
+下面主要适用于app-tls / 0.5.0；网络/端口与自有清理边界也适用于v2。旧Mac系统登录方案不继续部署。HAI、publisher各自前台运行，B用start或手动connect-app，勿在同端口重复启动。不修改VPN/MDM、公开转发端口或忽略证书校验来恢复。
+
+0.5.1日常入口见[短命令](daily-start.md)。haib.cmd找不到先检查npm prefix/PATH，use-client明确选择原真实配置；不重配设备。新默认指针损坏时拒绝回退，显式配置仍可用于定位；不要删除设备密钥。
 
 ## 先看哪一层
 
@@ -11,13 +15,23 @@
 | starting后无提示 | SSH连接尝试/前台常驻；不能用进程存活判断成功，检查预期ECS监听或B在线doctor |
 | forward_ready | OpenSSH对当前ECS→A监听的成功诊断；仍需B固定mTLS与健康/模型检查，不等于实际生成通过 |
 | 本地端口占用 | 自己的旧实例可由其终端Ctrl-C；不接管或结束未知监听 |
+| 模型能回复但本地工具被策略拒绝 | 分开检查Codex有效sandbox/backend；Windows0.171.0用户已实测workspace-write+MXC，0.5.1封装此默认。显式只读仍保留，不通过关闭sandbox/改执行策略强行验收 |
 | forward_conflict | ECS旧反向监听或权限拒绝均可能；先只读查精确端口归属，不自动改端口或策略 |
 | authentication / host_key | 核查该设备的SSH身份、公钥授权、已验证known_hosts；不删信任或禁用主机校验 |
 | TLS无法就绪 | 检查A/B/CA期限、服务名和固定指纹、网络/A发布；当前泛化错误不能证明是哪一项失败 |
 | 401 / 503 / 502 / 504 | 结合安全错误码区分bridge token、A认证可读性、HAI未运行或上游超时；不要只凭HTTP状态认定原因 |
 | 429 / 503上游错误 | 平台额度/容量/不可用等问题，bridge不重放POST；HAI策略以平台为准 |
+| SSH_STOP_TIMEOUT / cleanup_failed | 自有SSH退出未确认；查看本地服务/SSH状态，不宣称云端释放，不停止未知进程 |
+| OBSERVER_ERROR / LOCAL_STOP_ERROR | 状态回调或本地关闭失败；原始错误被隐藏，分别记录清理状态 |
 
-旧OpenSSH若没有可识别的完整成功诊断，可能不输出forward_ready；程序不会猜测成功或因此结束隧道。新版本详细分层/offline报告尚在[开发计划](next-development.md)，不是已存在命令。
+旧OpenSSH若没有可识别的完整成功诊断，可能不输出forward_ready；程序不会猜测成功或因此结束隧道。2026-11-25源码新增离线入口（旧安装包需更新）：
+
+~~~sh
+node bin/hai-bridge.mjs inspect-app --role publisher
+node bin/hai-bridge.mjs inspect-app --role client --client-config /ABS/PATH/client.json --json
+~~~
+
+检查配置、公开证书期限与文件元数据；不读私钥/HAI认证，不连接ECS/HAI，不停止占用端口。B无法离线检查A实际证书，A/B分别检查；--out可独占导出安全报告。详见[离线诊断](application-inspection.md)。
 
 ## 检查现有链路
 
@@ -47,7 +61,7 @@ start自己拥有B连接和GET就绪流程，不需另开同端口connect-app。
 
 只有确认是自己可结束的旧专用会话并取得相应操作授权后才处理。不要kill所有sshd、重启整个SSH服务、盲目换端口或放宽权限。重新启动后的监听属于正常运行需要，不是残留；结束后的本机状态与云端释放需分别确认。
 
-客户端ServerAliveInterval15/CountMax3不保证云端45秒清理。服务端ClientAlive属于另需管理员核查/授权的运维措施，也不能清除仍在线响应的本地孤儿SSH。具体保障未实现前，停止状态明确写“云端监听是否释放尚未核验”。
+本次可捕获路径已统一有界自有SSH清理，TERM后最多2秒、必要时KILL后再等最多1秒；超时报清理失败。父进程强杀仍不能执行finally。客户端ServerAliveInterval15/CountMax3不保证云端45秒清理。服务端ClientAlive属于另需管理员核查/授权的运维措施，也不能清除仍在线响应的本地孤儿SSH。停止状态仍明确写“云端监听是否释放尚未核验”。
 
 ## 反馈哪些信息
 

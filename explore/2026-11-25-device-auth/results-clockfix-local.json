@@ -1,0 +1,28 @@
+{
+  "date": "2026-11-25",
+  "source": "assistant_summary_of_local_synthetic_tests_not_raw_stdout",
+  "transport": "app-device",
+  "version": "0.5.0",
+  "mock": true,
+  "hai": "not_called",
+  "session_time_basis": "authenticated_server_http_date",
+  "status": "pass",
+  "regression": { "total": 183, "passed": 183, "new_clock_regressions": 7 },
+  "old_code_reproduction": { "targeted_tests": 4, "failed_as_expected": 4 },
+  "syntax_check": "pass",
+  "local_device_batch": { "total": 15, "passed": 15, "transport": "loopback_TCP_SSH_stub_not_OpenSSH_or_ECS" },
+  "tested": [
+    "B_clock_offsets_plus_minus_1853ms_and_2h",
+    "B_wall_clock_jumps_and_simulated_monotonic_pause",
+    "missing_invalid_or_inconsistent_challenge_and_session_HTTP_Date",
+    "Date_rounding_and_full_control_round_trip_subtracted_from_cache",
+    "expired_excessive_and_short_session_lifetimes",
+    "delayed_challenge_rejected_without_model_POST",
+    "failure_report_HTTP_boundary_without_credentials",
+    "prior_expiry_revocation_TLS_SSE_cancellation_no_replay_regressions"
+  ],
+  "not_checked": [
+    "Windows_after_fix", "WSL", "real_HAI", "real_AI_tool_session",
+    "real_VPN_sleep_resume", "A_outer_link_recovery", "Windows_ACL", "long_term_stability"
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-25",
+  "source": "assistant-curated-local-test-summary-not-raw-stdout",
+  "baseline_commit": "fe3633f",
+  "working_tree_changes": true,
+  "version": "0.5.0",
+  "platform": "darwin",
+  "node": "24.14.0",
+  "evidence": "local-synthetic-owned-process-and-offline-app-inspection",
+  "hai": "not_called",
+  "real_ssh": "not_started",
+  "status": "pass",
+  "tests": { "passed": 158, "failed": 0, "baseline": 137, "added": 21 },
+  "checks": [
+    "owned-child-idempotent-term-kill-bounded-close",
+    "exited-pid-not-signalled-old-attempt-isolation",
+    "sync-async-observer-and-logger-failure-cleanup",
+    "ssh-cleanup-timeout-not-reported-as-stopped",
+    "application-and-session-owned-resource-cleanup",
+    "offline-public-only-read-allowlist",
+    "certificate-valid-near-expiry-expired-not-yet-valid",
+    "pair-pin-name-issuer-purpose-and-format-validation",
+    "safe-default-pointer-schema-permissions-symlinks-size-limits",
+    "local-openssh-version-and-stored-trust-only",
+    "occupied-port-preserved-private-exclusive-report",
+    "full-regression-and-offline-package-install",
+    "npm-run-check",
+    "module-syntax-checks"
+  ],
+  "not_checked": [
+    "Windows_real_OpenSSH_and_ACL",
+    "WSL_Ubuntu_end_to_end",
+    "A_outer_link_recovery",
+    "ECS_remote_listener_release",
+    "VPN_sleep_resume",
+    "parent_SIGKILL_or_machine_shutdown",
+    "real_HAI",
+    "real_AI_tool_session",
+    "credential_renewal",
+    "long_term_stability"
+  ]
+}

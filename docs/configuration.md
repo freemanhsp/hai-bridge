@@ -1,8 +1,8 @@
 # 配置与排障
 
-本页先说明当前app-tls配置边界；后半保留原有SSH MVP，不按旧排障步骤重新开启被管理策略关闭的Mac Remote Login。真实使用见[日常启动](daily-start.md)、[应用排障](troubleshooting.md)与[凭据说明](credentials.md)。
+0.5.1保留v1/app-tls，新增独立schema2/app-device；v2配置/身份流程见[个人设备认证](device-auth.md)，不能手改旧JSON完成迁移。本页先说明v1配置边界；后半保留原有SSH MVP，不按旧排障步骤重新开启被管理策略关闭的Mac Remote Login。真实使用见[日常启动](daily-start.md)、[应用排障](troubleshooting.md)与[凭据说明](credentials.md)。
 
-## 当前应用配置（0.5.0）
+## v1应用配置（0.5.0引入，0.5.1保留）
 
 server.json / client.json 都有schema_version=1、transport=app-tls、mode=mock或hai、role=publisher或client。字段/角色/配对不符拒绝；不要给旧SSH JSON添加transport就当作迁移。
 
@@ -10,7 +10,7 @@ server.json / client.json 都有schema_version=1、transport=app-tls、mode=mock
 
 相对身份/信任/TLS路径按配置文件目录解析；setup-publisher只记录A绝对配置路径，setup-client复制B配对到个人目录而保留SSH绝对路径。默认已存在则拒绝覆盖，程序升级不续期、不改信任或启动进程。
 
-真实app-tls不接受HAI_UPSTREAM_API_KEY/HAI_BRIDGE_TOKEN作为认证来源覆盖，不支持--base-url覆盖或旧doctor --offline。日常start默认用个人client.json；手动connect-app/doctor须显式指向其配置，不假定它们也使用个人默认项。具体命令见日常说明；新的应用离线诊断仍在规划。
+真实app-tls不接受HAI_UPSTREAM_API_KEY/HAI_BRIDGE_TOKEN作为认证来源覆盖，不支持--base-url覆盖或旧doctor --offline。0.5.1的start/haib优先读取use-client保存的client-default.json指针，没有指针才用个人client.json；指针损坏拒绝回退。use-client仅记原真实配置路径，不复制身份。手动connect-app/doctor须显式指向配置，不假定它们也使用个人默认项。v1应用离线诊断使用[inspect-app](application-inspection.md)，v2离线诊断待开发。
 
 ## 以下是历史系统SSH配置
 

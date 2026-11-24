@@ -1,6 +1,58 @@
 # 验证记录
 
-## 最新状态：publisher体验与隔离修正（2026-11-21）
+## Windows 实战与 0.5.1 封装（2026-11-25）
+
+证据来自用户终端日志与反馈，不是助手在Windows直接执行。Codex 0.171.0 / Node24.22.3 / win32，真实v2 provider为hai-bridge。首次完整验收显示read-only且读取命令被策略拒绝，原报告FAIL保留；Bridge能返回模型回复，不等于B工具权限正常。
+
+用户随后无模型sandbox/managed workspace读写检查成功，再显式workspace-write + windows.sandbox="mxc"运行真实任务：读取合成项目、仅将src/sum.mjs的减法改为加法，模型内4/4测试成功；第二次任务读取已修复文件，独立终端4/4通过。其间一次独立测试命令因粘贴粘连报MODULE_NOT_FOUND，最终正确命令通过，不归因Bridge。用户最新反馈临时haib交互式启动正常。这些任务已实际计费，不为了补原报告再次重跑。
+
+0.5.1将参数封装为平台默认、保留显式只读/权限/backend选择，新增haib与use-client路径指针。npm test本机212/212、npm run check通过；临时密钥/回环上游/SSH和Codex替身，实际离线打包/安装/异地短入口及默认指针回归通过。最初受限沙箱运行因listen EPERM失败，在获准回环测试环境重跑全部通过；不是Windows产品结果。官方OpenAI Docs页面访问403，兼容依据为用户实测和本机CLI解析，不声称核验官方最新支持范围。
+
+新包Windows安装/haib.cmd、原集中脚本重跑、自动无模型工具权限预检、A外链/根轮换/撤销实机、VPN/休眠、Windows ACL、WSL/其他B系统和长期稳定性仍未验证；不将原FAIL改写为PASS。[安全证据摘要](../explore/2026-11-25-windows-launcher/README.md)。
+
+## 分批归档与 npm 生命周期防护（2026-11-25）
+
+按用户要求在本地分批commit，不推送；共享文件拆分暂存，再用独立临时快照验证，不覆盖工作区修改。首个0.5.1候选包保留原git_dirty/哈希，提交后可另生成干净构建，不改写先前交付记录。
+
+隔离快照使用Node22.22.2/npm10.9.7时发现既有打包测试执行prepare，尽管命令带ignore-scripts；本机npm10所用pacote目录prepare路径未检查ignoreScripts。首批相同代码在Node24.14.0/npm11.9.0为144/144，表明这是既有打包兼容/防护缺口，不是Windows模型/设备认证失败。
+
+修复为在调用npm前拒绝prepare/prepack/postpack/prepublish/prepublishOnly/preinstall/install/postinstall hook，保留手工npm run publish快捷入口。回归要求hook存在时连不存在的npm路径都不调用，输出目录不创建；原源码/脚本不删除，不在业务系统执行脚本。
+
+LibreSSL 3.3.6 不接受原测试夹具的 x509 -days 0。只调整过期叶证书测试：以临时 CA/CSR 和显式过去的生效/到期日期签发，并断言已经过期；未跳过测试，未改变运行时证书校验或真实证书。
+
+最终源码回归：Node22.22.2/npm10.9.7/LibreSSL3.3.6 的索引快照 213/213，Node24.14.0/npm11.9.0/OpenSSL3.6.4 的工作区 213/213，均无失败/跳过；npm run check、53个 src/bin/scripts/test 模块语法检查及 git diff --check 通过。新增一项生命周期 hook 防护测试，原212项是上一候选构建的历史记录，不改写。当前受限环境仍因回环监听 EPERM 首次失败，获准本机合成回环测试后重跑通过；不把环境失败隐去。
+
+代码按清理、打包防护、设备认证/诊断、集中验收、0.5.1封装五批提交，文档/证据另为一批；[分批安全摘要](../explore/2026-11-25-windows-launcher/results-commits-local.json)。未推送，没有真实 SSH/HAI/模型请求、个人凭据迁移或 VPN/MDM 修改。新的普通包应在文档提交后从干净工作区生成，并以各自 release.json 为准；原候选包保留。
+
+## v2 双机时间差修复（2026-11-25，前批历史）
+
+用户 Windows 已完成 v2 登记/批准，但首次 check-device 只有第一项失败、B 自有两端口释放成功。后续[用户诊断原文](../explore/2026-11-25-device-auth/diagnostic-windows-user-clock-skew.json)确认 TLS 已验证、挑战HTTP200、B算出121853ms剩余时间而旧代码上限120000ms，随后本地503/authentication_unavailable。HTTP Date 秒精度估计 A-minus-B 为1465ms，不把这个值当作毫秒级准确的时钟测量。审批/挑战成功不等于会话/模型协议验收通过。
+
+B 修复使用受信 TLS 响应中的 A 时间及请求耗时计算有效期，不直接比较两机墙钟；保守扣除1秒精度/往返耗时，缓存使用 B 两种相对时钟。A挑战/会话期限、签名格式、身份、撤销及不重放保持不变；现有A无需为本次升级重启。新增7项回归先对旧代码复现4项失败，修复后完整 npm test 183/183及 npm run check通过。[本机修复摘要](../explore/2026-11-25-device-auth/results-clockfix-local.json)与用户失败证据分开。
+
+覆盖 B 快/慢1853ms及2小时、运行中前后跳钟、单调时钟暂停的模拟睡眠、挑战/会话缺失/错误/不一致时间头、Date精度和耗时扣除、坏会话期限/不超期缓存、过慢挑战、失败报告安全HTTP边界。均为临时合成配置和本机loopback，没有新调用真实HAI或连接ECS/修改VPN/MDM；不证明真实睡眠或Windows修复后通过。下一次只升级 B 程序并重跑 check-device，保留现有设备登记。
+
+## 个人设备认证 v2 初始本机批次（2026-11-25，历史）
+
+独立schema2/app-device，未迁移个人凭据/默认项、未启动真实HAI/ECS、未commit/push或生成用户交付包。npm test本机176/176通过（保留原P0 158项，新增18项v2），npm run check及所有src/bin/scripts/test模块语法检查通过；普通包白名单/临时离线安装回归包含新模块且不包含身份。
+
+临时密钥/证书/私有目录、实际服务器TLS、loopback TCP SSH替身与合成HAI覆盖：B单一私钥本机生成/不导出；邀请消费与pending/本机批准；错误签名/实例/挑战重放；CA/服务器pin/name/根过期/明文拒绝；会话过期自动刷新、旧会话拒绝/不重放；Unicode/四并发SSE/取消/429/503；撤销旧会话和活动流；A同公钥续订、临期/已过期叶启动续订；状态损坏/写锁/symlink/权限/签发键错配；v1隔离/default/CLI；HAI认证延迟到授权模型路径才读取；登记拥有者清理/外部端口保护；B15项集中检查及安全报告；A服务重启后一次401、下一新请求成功；合成工具启动器/本地项目边界。没有真实推理。
+
+check-device是MOCK ONLY、自己拥有B HTTP/SSH的一次命令；本机替身15/15通过，不修改A、撤销设备或刷新A证书。Windows包装脚本已代码检查，Mac无PowerShell，未Windows实机运行。v1 check-app/try-hai/inspect-app明确不作为v2证据。
+
+[本机摘要](../explore/2026-11-25-device-auth/results-local.json)是助手整理的摘要，不是原始stdout或跨设备报告。Windows/WSL/Linux/macOS-B、Windows ACL、真实HAI/工具任务、真实ECS/VPN/睡眠/强杀恢复与长期稳定性均未v2验收。历史v1 Windows21/21与真实5/5保留，不合并为v2通过。
+
+## 本机生命周期与离线诊断（2026-11-25，上批历史）
+
+起点为0.5.0 / fe3633f，本次工作区尚未提交或交付新包。npm test 158/158通过（相对137项基线新增21项），npm run check与所有src/bin/scripts/test模块语法通过。新增7项隧道拥有者异常/超时/竞争回归、2项应用失败清理、1项会话observer失败回收、11项应用离线诊断。首次最小observer复现对旧实现出现异步异常/测试等待不结束；仅终止已核实属于该合成测试的Node父/子进程，未启动真实SSH。新回归设有超时上限。
+
+所有配置与身份来自临时合成fixture；实际mTLS/TCP仅loopback。inspect-app复用纯schema校验，元数据检查不读取SSH/TLS私钥、access.json或HAI auth内容；测试以读取白名单断言此边界，毒化错误/配置/证书不进入摘要。覆盖默认指针、期限/错配、权限/直接symlink、端口占用不接管、独占报告和CLI参数拒绝。Windows ACL测试仅注入win32分支，不是Windows实机。
+
+[本机安全汇总](../explore/2026-11-25-lifecycle-diagnostics/results-local.json)是助手整理的测试摘要，不是原始stdout。普通打包/临时prefix离线安装回归仍通过，但没有生成供用户安装的新交付包。本次未改现有个人默认项/凭据、未连接ECS/真实HAI、未发送模型请求或改VPN/MDM。
+
+Windows/WSL新版生命周期、A外层实际中断/云端释放、VPN/睡眠/父进程强杀、实际工具任务与长期稳定性仍未验收。正常stopped仅确认本机自有清理；远端释放为not_checked。历史Windows21/21及0.4.0真实5/5保留，不合并为新版通过证据。
+
+## publisher体验与隔离修正（2026-11-21，历史）
 
 代码提交7236950，版本号仍0.5.0。npm test最终137/137通过，npm run check与src/bin模块语法检查通过。新增5项回归：OpenSSH成功诊断分片/CRLF/重复/错误元组与每次重连独立确认、停止后不误报、publisher传递正确转发元组、中文状态边界、npm快捷入口与文本/JSON隔离。[安全汇总](../explore/2026-11-21-publisher/results-local.json)明确是助手整理的本机模拟结果，不是原始stdout或Windows实测。
 

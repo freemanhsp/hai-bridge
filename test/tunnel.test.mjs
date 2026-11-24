@@ -7,6 +7,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { sshArguments, runTunnel, classifySshFailure, sshFailureHint } from '../src/tunnel.mjs';
+import { ownProcess } from '../src/owned-process.mjs';
 
 test('SSH forwards only loopback and keeps default host-key verification', () => {
   const args = sshArguments({ localPort: 16655, remoteHost: '127.0.0.1', remotePort: 16656, target: 'user@mac.local' });
@@ -28,6 +29,52 @@ test('SSH arguments reject injected options and non-loopback destinations', () =
 
 const CONFIG = { localPort: 18084, remoteHost: '127.0.0.1', remotePort: 18080,
   target: 'hai-bridge-mac', reconnect: true, maxRetries: 3 };
+
+test('owned child stop is bounded, idempotent and does not signal an exited PID', { timeout: 1000 }, async () => {
+  for (const alreadyExited of [false, true]) {
+    const child = new EventEmitter(); child.pid = 999999; child.kills = [];
+    child.kill = signal => { child.kills.push(signal); if (signal === 'SIGKILL') queueMicrotask(() => child.emit('close', null)); return true; };
+    const owner = ownProcess(child, { graceMs: 10, killMs: 10 });
+    if (alreadyExited) { child.emit('exit', 0); setTimeout(() => child.emit('close', 0), 15); }
+    await Promise.all([owner.stop(), owner.stop()]);
+    assert.deepEqual(child.kills, alreadyExited ? [] : ['SIGTERM', 'SIGKILL']);
+    assert.equal(owner.closed, true); assert.equal(child.listenerCount('error'), 0);
+  }
+  const child = new EventEmitter(); child.pid = 999999; const kills = [];
+  child.kill = signal => { kills.push(signal); return true; };
+  const owner = ownProcess(child, { graceMs: 5, killMs: 5 });
+  await assert.rejects(owner.stop(), { code: 'SSH_STOP_TIMEOUT' });
+  await assert.rejects(owner.stop(), { code: 'SSH_STOP_TIMEOUT' });
+  assert.deepEqual(kills, ['SIGTERM', 'SIGKILL']);
+  child.emit('error', new Error('SYNTHETIC-LATE')); child.emit('close', null);
+});
+
+test('observer exception during a live forward diagnostic cleans only its owned SSH', { timeout: 1000 }, async () => {
+  const signals = new EventEmitter(), events = [], kills = [];
+  const child = new EventEmitter(); child.stderr = new EventEmitter(); child.pid = 999999;
+  child.kill = signal => { kills.push(signal); queueMicrotask(() => child.emit('close', null)); return true; };
+  await assert.rejects(runTunnel(CONFIG, { signals, logger: () => {}, forwardConfirmation: 'confirm',
+    childStopOptions: { graceMs: 10, killMs: 10 }, onEvent(e) {
+      events.push(e); if (e.state === 'forward_ready') throw new Error('SYNTHETIC-SECRET-OBSERVER');
+    }, spawnProcess() { queueMicrotask(() => child.stderr.emit('data', Buffer.from('confirm\n'))); return child; } }), /observer/i);
+  assert.deepEqual(kills, ['SIGTERM']);
+  assert.equal(signals.listenerCount('SIGINT'), 0);
+  assert.equal(JSON.stringify(events).includes('SYNTHETIC-SECRET'), false);
+});
+
+test('unresponsive owned SSH on user stop escalates once and reports cleanup failure if still live', { timeout: 1000 }, async () => {
+  for (const stuck of [false, true]) {
+    const signals = new EventEmitter(), child = new EventEmitter(), kills = [], events = [];
+    child.pid = 999999; child.stderr = new EventEmitter();
+    child.kill = signal => { kills.push(signal); if (!stuck && signal === 'SIGKILL') queueMicrotask(() => child.emit('close', null)); return true; };
+    const task = runTunnel(CONFIG, { signals, logger: () => {}, childStopOptions: { graceMs: 10, killMs: 10 },
+      onEvent: e => events.push(e), spawnProcess() { queueMicrotask(() => { signals.emit('SIGTERM'); signals.emit('SIGINT'); }); return child; } });
+    if (stuck) await assert.rejects(task, { code: 'SSH_STOP_TIMEOUT' }); else assert.equal(await task, 0);
+    assert.deepEqual(kills, ['SIGTERM', 'SIGKILL']);
+    assert.equal(signals.listenerCount('SIGTERM'), 0);
+    if (stuck) { assert.equal(events.some(e => e.state === 'stopped'), false); child.emit('close', null); }
+  }
+});
 
 function harness(scenarios) {
   const signals = new EventEmitter(), logs = [], delays = [], children = [];
@@ -52,6 +99,61 @@ function harness(scenarios) {
     dependencies: { signals, spawnProcess, logger: message => logs.push(message), now: () => clock,
       pause: async ms => { delays.push(ms); } } };
 }
+
+test('async observer rejection and close racing together cannot hide failure or start a retry', { timeout: 1000 }, async () => {
+  const h = harness([{ code: 255, stderr: 'confirm\n' }]);
+  await assert.rejects(runTunnel(CONFIG, { ...h.dependencies, forwardConfirmation: 'confirm',
+    onEvent: async event => { if (event.state === 'forward_ready') { await Promise.resolve(); throw new Error('SYNTHETIC-SECRET'); } } }),
+  error => error.code === 'OBSERVER_ERROR' && !error.message.includes('SYNTHETIC-SECRET'));
+  assert.equal(h.children.length, 1); assert.equal(h.delays.length, 0);
+  assert.equal(h.signals.listenerCount('SIGINT'), 0);
+});
+
+test('logger and starting/retry observer exceptions never leave handlers or launch extra children', { timeout: 1000 }, async () => {
+  for (const stage of ['logger', 'starting', 'retry_wait']) {
+    const h = harness([{}]);
+    await assert.rejects(runTunnel(CONFIG, { ...h.dependencies,
+      logger: stage === 'logger' ? () => { throw new Error('SYNTHETIC-SECRET'); } : () => {},
+      onEvent: event => { if (event.state === stage) throw new Error('SYNTHETIC-SECRET'); },
+    }), { code: 'OBSERVER_ERROR' });
+    assert.equal(h.children.length, stage === 'retry_wait' ? 1 : 0);
+    assert.equal(h.signals.listenerCount('SIGINT'), 0); assert.equal(h.delays.length, 0);
+  }
+});
+
+test('spawn error before close and live-child error both drain only owned child without retry', { timeout: 1000 }, async () => {
+  for (const spawned of [false, true]) {
+    const child = new EventEmitter(); child.stderr = new EventEmitter(); const kills = [];
+    if (spawned) child.pid = 999999;
+    child.kill = signal => { kills.push(signal); queueMicrotask(() => child.emit('close', 1)); return true; };
+    const signals = new EventEmitter();
+    await assert.rejects(runTunnel(CONFIG, { signals, logger: () => {}, childStopOptions: { graceMs: 10, killMs: 10 },
+      spawnProcess() { queueMicrotask(() => {
+        child.emit('error', new Error('SYNTHETIC-SECRET'));
+        if (!spawned) queueMicrotask(() => child.emit('close', 1));
+      }); return child; } }), /Cannot start SSH/);
+    assert.deepEqual(kills, spawned ? ['SIGTERM'] : []);
+    assert.equal(signals.listenerCount('SIGINT'), 0); assert.equal(child.listenerCount('error'), 0);
+  }
+});
+
+test('a closed old attempt and delayed diagnostics cannot affect its successor or be signalled again', { timeout: 1000 }, async () => {
+  const h = harness([{}, { stop: true }]);
+  const original = h.dependencies.spawnProcess;
+  h.dependencies.spawnProcess = (...args) => {
+    const child = original(...args);
+    if (h.children.length === 2) {
+      const old = h.children[0].child;
+      assert.equal(old.listenerCount('close'), 0); assert.equal(old.stderr.listenerCount('data'), 0);
+      old.stderr.emit('data', Buffer.from('confirm\n')); old.emit('close', 0);
+    }
+    return child;
+  };
+  const events = [];
+  assert.equal(await runTunnel(CONFIG, { ...h.dependencies, forwardConfirmation: 'confirm', onEvent: e => events.push(e) }), 0);
+  assert.equal(h.children[0].child.killedWith, undefined); assert.equal(h.children[1].child.killedWith, 'SIGTERM');
+  assert.equal(events.some(e => e.state === 'forward_ready'), false);
+});
 
 test('publisher args allow only loopback SSH and preserve pinned/configured identities', () => {
   const config = { ...CONFIG, direction: 'remote', remotePort: 22, identityFile: '/tmp/key with spaces',

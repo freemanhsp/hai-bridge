@@ -1,6 +1,14 @@
 import { spawn } from 'node:child_process';
 import { setTimeout as wait } from 'node:timers/promises';
 import { validatePort, validateSshTarget, sshValue } from './config.mjs';
+import { ownProcess, validateProcessStopOptions } from './owned-process.mjs';
+
+export function observerFailure() {
+  return Object.assign(new Error('Lifecycle observer failed; diagnostic contents were withheld'), { code: 'OBSERVER_ERROR' });
+}
+export async function observe(callback, ...args) {
+  try { return await callback?.(...args); } catch { throw observerFailure(); }
+}
 
 export function sshArguments(config) {
   if (config.localOnly) throw new Error('Local-only development configuration cannot establish SSH forwarding');
@@ -57,84 +65,115 @@ export function sshFailureHint(reason) {
 
 export async function runTunnel(config, { logger = console.log, onEvent, executable = 'ssh', spawnProcess = spawn,
   signals = process, pause = (ms, signal) => wait(ms, undefined, { signal }), now = () => performance.now(),
-  buildArgs = sshArguments, forwardConfirmation } = {}) {
+  buildArgs = sshArguments, forwardConfirmation, childStopOptions } = {}) {
+  const stopOptions = validateProcessStopOptions(childStopOptions); // Reject before creating a child.
   const args = buildArgs(config);
   const maxRetries = config.maxRetries ?? 5;
   if (!Number.isInteger(maxRetries) || maxRetries < 0 || maxRetries > 100) throw new Error('Invalid maxRetries');
   const controller = new AbortController();
-  let child, retries = 0, attempt = 0;
+  let owner, retries = 0, attempt = 0;
+  let resolveFault;
+  const fault = new Promise(resolve => { resolveFault = resolve; });
   const direction = config.direction === 'remote' ? 'publish' : 'connect';
-  const emit = (state, details = {}) => onEvent?.({ event: 'ssh', state, direction,
+  const emit = (state, details = {}) => observe(onEvent, { event: 'ssh', state, direction,
     loopback_port: config.localPort, attempt, ...details });
-  const stopped = () => { emit('stopped', { reason: 'user_stop', exit_code: 0 }); logger('SSH stopped'); return 0; };
-  const stop = () => { if (controller.signal.aborted) return; controller.abort(); child?.kill('SIGTERM'); };
+  const log = message => observe(logger, message);
+  const stopped = async () => { await emit('stopped', { reason: 'user_stop', exit_code: 0 }); await log('SSH stopped'); return 0; };
+  const stop = () => {
+    if (controller.signal.aborted) return;
+    controller.abort();
+    owner?.stop().catch(error => resolveFault({ error }));
+  };
   signals.once('SIGINT', stop);
   signals.once('SIGTERM', stop);
   try {
     while (!controller.signal.aborted) {
       attempt++;
-      emit('starting');
-      if (controller.signal.aborted) return stopped();
-      logger('Starting SSH ' + direction + ': ' + config.target + ' (loopback port ' + config.localPort + ')');
+      await emit('starting');
+      if (controller.signal.aborted) return await stopped();
+      await log('Starting SSH ' + direction + ': ' + config.target + ' (loopback port ' + config.localPort + ')');
+      if (controller.signal.aborted) return await stopped();
       const started = now();
-      const result = await new Promise(resolve => {
-        let stderr = '', forwardConfirmed = false, finished = false;
-        const finish = result => { finished = true; resolve(result); };
-        try {
-          child = spawnProcess(executable, args, { stdio: ['ignore', 'ignore', 'pipe'], shell: false });
-        } catch { finish({ code: 1, reason: 'spawn_error' }); return; }
+      let result, child, stderr = '', forwardConfirmed = false, finished = false, observerError;
+      const observations = [];
+      try {
+        child = spawnProcess(executable, args, { stdio: ['ignore', 'ignore', 'pipe'], shell: false });
+      } catch { result = { code: 1, reason: 'spawn_error' }; }
+      if (child) {
+        owner = ownProcess(child, stopOptions);
         // Keep a bounded diagnostic tail only. Do not log server banners or raw stderr.
-        child.stderr?.on('data', chunk => {
-          stderr = (stderr + chunk.toString()).slice(-16384);
-          // Best-effort OpenSSH diagnostic, not a security check or end-to-end probe.
-          // Require the exact expected forwarding tuple and a complete line.
-          if (forwardConfirmation && !forwardConfirmed && !finished && !controller.signal.aborted
-              && stderr.split(/\r?\n/).slice(0, -1).includes(forwardConfirmation)) {
-            forwardConfirmed = true;
-            emit('forward_ready', { forward_scope: 'relay_listener', end_to_end: 'not_checked' });
-          }
-        });
-        child.once('error', () => finish({ code: 1, reason: 'spawn_error' }));
-        child.once('close', code => {
-          const exitCode = code ?? 255;
-          finish({ code: exitCode, reason: classifySshFailure(stderr, exitCode) });
-        });
-      });
-      child = undefined;
-      if (controller.signal.aborted) return stopped();
+        const onData = chunk => {
+          try {
+            stderr = (stderr + chunk.toString()).slice(-16384);
+            // Best-effort OpenSSH diagnostic, not a security check or end-to-end probe.
+            // Require the exact expected forwarding tuple and a complete line.
+            if (forwardConfirmation && !forwardConfirmed && !finished && owner.live() && !controller.signal.aborted
+                && stderr.split(/\r?\n/).slice(0, -1).includes(forwardConfirmation)) {
+              forwardConfirmed = true;
+              observations.push(emit('forward_ready', { forward_scope: 'relay_listener', end_to_end: 'not_checked' })
+                .catch(error => { observerError = error; resolveFault({ error }); }));
+            }
+          } catch { resolveFault({ error: observerFailure() }); }
+        };
+        child.stderr?.on('data', onData);
+        try {
+          if (controller.signal.aborted) owner.stop().catch(error => resolveFault({ error }));
+          result = await Promise.race([owner.result, fault]);
+          if (result.error) throw result.error;
+          await Promise.all(observations);
+          if (observerError) throw observerError;
+          result.reason ??= classifySshFailure(stderr, result.code);
+        } finally {
+          finished = true;
+          child.stderr?.removeListener('data', onData);
+          await owner.stop();
+          owner = undefined;
+        }
+      }
+      if (controller.signal.aborted) return await stopped();
       if (result.code === 0) {
-        emit('stopped', { reason: 'ssh_exit', exit_code: 0 });
-        logger('SSH exited cleanly; the tunnel is no longer running');
+        await emit('stopped', { reason: 'ssh_exit', exit_code: 0 });
+        await log('SSH exited cleanly; the tunnel is no longer running');
         return 0;
       }
       if (result.reason !== 'spawn_error') {
-        emit('exited', { exit_code: result.code, reason: result.reason });
-        logger('SSH exited (' + result.code + '): ' + result.reason);
-      } else logger('Cannot start SSH: spawn_error');
-      const fail = state => {
+        await emit('exited', { exit_code: result.code, reason: result.reason });
+        await log('SSH exited (' + result.code + '): ' + result.reason);
+      } else await log('Cannot start SSH: spawn_error');
+      const fail = async state => {
         const hint = sshFailureHint(result.reason);
-        emit(state, { exit_code: result.code, reason: result.reason, hint });
-        logger('Next: ' + hint);
+        await emit(state, { exit_code: result.code, reason: result.reason, hint });
+        await log('Next: ' + hint);
         return result.code;
       };
       if (result.reason === 'spawn_error') {
-        fail('failed');
+        await fail('failed');
         throw new Error('Cannot start SSH; install the OpenSSH client and check PATH');
       }
-      if (!config.reconnect || result.reason !== 'connection_failed') return fail('failed');
+      if (!config.reconnect || result.reason !== 'connection_failed') return await fail('failed');
       // Reset only after a sustained process lifetime, not every brief reconnect.
       if (now() - started >= 30000) retries = 0;
-      if (retries >= maxRetries) { logger('SSH retry budget exhausted'); return fail('retry_exhausted'); }
+      if (retries >= maxRetries) { await log('SSH retry budget exhausted'); return await fail('retry_exhausted'); }
       const delay = Math.min(15000, 1000 * 2 ** retries);
       retries++;
-      emit('retry_wait', { retry: retries, max_retries: maxRetries, delay_ms: delay, requests_replayed: false });
-      logger('Reconnect ' + retries + '/' + maxRetries + ' in ' + delay / 1000 + 's (requests are not replayed)');
-      try { await pause(delay, controller.signal); }
+      await emit('retry_wait', { retry: retries, max_retries: maxRetries, delay_ms: delay, requests_replayed: false });
+      await log('Reconnect ' + retries + '/' + maxRetries + ' in ' + delay / 1000 + 's (requests are not replayed)');
+      try {
+        const result = await Promise.race([pause(delay, controller.signal), fault]);
+        if (result?.error) throw result.error;
+      }
       catch (error) { if (!controller.signal.aborted) throw error; }
     }
-    return stopped();
+    return await stopped();
+  } catch (error) {
+    if (['SSH_STOP_TIMEOUT', 'OBSERVER_ERROR'].includes(error.code)) {
+      await emit('failed', { reason: error.code, exit_code: 1, owned_ssh: error.code === 'SSH_STOP_TIMEOUT' ? 'not_confirmed' : 'stopped_or_not_started',
+        remote_release: 'not_checked' }).catch(() => {});
+    }
+    throw error;
   } finally {
     signals.removeListener('SIGINT', stop);
     signals.removeListener('SIGTERM', stop);
+    await owner?.stop();
   }
 }

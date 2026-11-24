@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { initializeApplicationPublisher, initializeApplicationClient, loadApplicationConfig } from '../src/app-config.mjs';
 import { startHaiPublisher, listen, closeServer } from '../src/app-transport.mjs';
 import { assertPortFree } from '../src/app-runtime.mjs';
-import { setupClient, setupPublisher, defaultClientFile, defaultPublisherFile } from '../src/profiles.mjs';
+import { setupClient, rememberClient, resolveDefaultClientFile, setupPublisher, defaultClientFile, defaultPublisherFile } from '../src/profiles.mjs';
 import { startSession } from '../src/session.mjs';
 import { runCodex } from '../src/client.mjs';
 import { buildRelease } from '../scripts/pack.mjs';
@@ -91,6 +91,61 @@ test('setup-client copies only B identity, preserves connection settings and ref
   assert.equal((await fs.readFile(output, 'utf8')).includes(KEY), false);
 });
 
+test('use-client remembers existing real config idempotently without copying keys or replacing legacy config', async () => {
+  const { file, config } = await client('remember-source'), root = path.join(temporary, 'remember-default');
+  await fs.mkdir(root, { mode: 0o700 });
+  const legacy = defaultClientFile(root); await fs.writeFile(legacy, 'synthetic-old-profile', { mode: 0o600 });
+  const original = await fs.readFile(file), before = (await fs.readdir(config.tlsDirectory)).sort(), count = requests;
+  const pointer = await rememberClient(file, root), first = await fs.readFile(pointer);
+  assert.equal(await rememberClient(file, root), pointer);
+  assert.deepEqual(await fs.readFile(pointer), first);
+  assert.equal(await resolveDefaultClientFile(root), file);
+  assert.equal(await fs.readFile(legacy, 'utf8'), 'synthetic-old-profile');
+  assert.deepEqual(await fs.readFile(file), original);
+  assert.deepEqual((await fs.readdir(config.tlsDirectory)).sort(), before);
+  assert.deepEqual((await fs.readdir(root)).sort(), ['client-default.json', 'client.json']);
+  assert.equal(first.toString().includes(config.token), false); assert.equal(requests, count);
+});
+
+test('use-client changes only its explicit pointer; a missing selected config never falls back to legacy', async () => {
+  const one = await client('remember-one'), two = await client('remember-two'), root = path.join(temporary, 'remember-switch');
+  const pointer = await rememberClient(one.file, root);
+  await rememberClient(two.file, root); assert.equal(await resolveDefaultClientFile(root), two.file);
+  await fs.writeFile(defaultClientFile(root), 'synthetic-legacy', { mode: 0o600 });
+  await fs.unlink(two.file);
+  assert.equal(await resolveDefaultClientFile(root), two.file);
+  let starts = 0;
+  await assert.rejects(startSession({ profileDir: root, project }, { launchCodex: async () => { starts++; return 0; } }));
+  assert.equal(starts, 0); assert.ok((await fs.readFile(pointer, 'utf8')).includes(two.file));
+});
+
+test('default resolution preserves legacy fallback only when no pointer exists and rejects invalid pointers', async () => {
+  const root = path.join(temporary, 'remember-invalid'); await fs.mkdir(root, { mode: 0o700 });
+  assert.equal(await resolveDefaultClientFile(root), defaultClientFile(root));
+  const file = path.join(root, 'client-default.json');
+  for (const value of ['bad-json', JSON.stringify({ schema_version: 1, role: 'client-default', client_config: 'relative.json' }),
+    JSON.stringify({ schema_version: 1, role: 'client-default', client_config: project, secret: KEY })]) {
+    await fs.writeFile(file, value, { mode: 0o600 });
+    await assert.rejects(resolveDefaultClientFile(root), error => !error.message.includes(KEY));
+  }
+  if (process.platform !== 'win32') {
+    await fs.writeFile(file, JSON.stringify({ schema_version: 1, role: 'client-default', client_config: project }));
+    await fs.chmod(file, 0o644); await assert.rejects(resolveDefaultClientFile(root));
+    await fs.chmod(file, 0o600); const target = file + '.saved'; await fs.rename(file, target);
+    await fs.symlink(target, file); await assert.rejects(resolveDefaultClientFile(root));
+    await assert.rejects(rememberClient((await client('remember-link-source')).file, root));
+  }
+});
+
+test('start reads its explicitly selected default and keeps config outside the project', async () => {
+  const { file, config } = await client('selected-start'), root = path.join(temporary, 'selected-start-default'), h = tcpHarness();
+  await rememberClient(file, root); let launched = 0;
+  assert.equal(await startSession({ profileDir: root, project }, { runtimeOptions: { spawnProcess: h.spawnProcess },
+    launchCodex: async () => { launched++; return 0; } }), 0);
+  assert.equal(launched, 1); await released(config);
+  await assert.rejects(startSession({ profileDir: root, project: path.dirname(file) }), /outside/);
+});
+
 test('setup rejects unsafe roots/mock clients; publisher pointer is local and non-overwriting', async () => {
   const { file } = await client('profile-validation'), pointerRoot = path.join(temporary, 'publisher-default');
   const count = requests; await setupPublisher(info.serverFile, pointerRoot);
@@ -127,6 +182,16 @@ test('start owns one pinned TLS connection and Codex in project cwd with token o
   assert.equal(JSON.stringify(captured.args).includes(config.token), false);
   assert.equal(JSON.stringify(events).includes(config.token), false); assert.equal(JSON.stringify(events).includes(KEY), false);
   assert.deepEqual(events.filter(e => e.event === 'session').map(e => e.state), ['connecting', 'ready', 'codex_starting', 'stopped']);
+  await released(config, signals);
+});
+
+test('session observer failure after readiness closes its own B connection without launching Codex', { timeout: 3000 }, async () => {
+  const { file, config } = await client('observer-session'), h = tcpHarness(), signals = new EventEmitter(); let calls = 0;
+  await assert.rejects(startSession({ clientFile: file, project }, { signals, runtimeOptions: { spawnProcess: h.spawnProcess },
+    onEvent(event) { if (event.event === 'session' && event.state === 'ready') return Promise.reject(new Error('SYNTHETIC-SECRET')); },
+    launchCodex: async () => { calls++; return 0; },
+  }), error => /Cannot start session/.test(error.message) && !error.message.includes('SYNTHETIC-SECRET'));
+  assert.equal(calls, 0); assert.equal(h.children.length, 1); assert.equal(h.children[0].kills, 1);
   await released(config, signals);
 });
 
@@ -202,7 +267,7 @@ test('missing Codex executable frees connection and removes signal handlers', as
 });
 
 test('daily CLI rejects missing setup, invalid flags and unsafe argument combinations before connecting', async () => {
-  for (const args of [['setup-client'], ['setup-publisher'], ['start', '--mock'], ['start', '--json'],
+  for (const args of [['setup-client'], ['use-client'], ['use-client', '--client-config', 'unused', '--', 'exec'], ['setup-publisher'], ['start', '--mock'], ['start', '--json'],
     ['setup-client', '--client-config', 'unused', '--', 'exec'], ['doctor', '--profile-dir', temporary],
     ['publish-app', '--profile-dir', path.join(temporary, 'missing-default')]]) {
     await assert.rejects(execute(process.execPath, [sourceCli, ...args], { cwd: project }), error => {

@@ -32,6 +32,7 @@ export async function tryHai({ clientFile, out, infer = false }, {
   try { await fs.lstat(destination); throw Object.assign(new Error('Report exists'), { code: 'EEXIST' }); }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
   const config = await loadApplicationConfig(clientFile, 'client');
+  if (config.transport !== 'app-tls') throw new Error('try-hai currently validates v1 app-tls only; use v2 connect-app and doctor explicitly');
   if (config.mode !== 'hai') throw new Error('try-hai requires a dedicated --hai client, not a mock configuration');
   const report = { transport: 'app-tls', mock: false, version: VERSION, platform: process.platform,
     node: process.versions.node, evidence, status: 'fail', hai: 'not_called',

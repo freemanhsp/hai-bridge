@@ -26,7 +26,7 @@ export function request(origin, route, { method = 'GET', headers = auth, body, s
   });
 }
 
-export function stream(origin, scenario = 'stream') {
+export function stream(origin, scenario = 'stream', { headers = auth } = {}) {
   let req, response, finished = false, resolveStarted, rejectStarted, resolveDone;
   let received = '', firstAt, lastAt, sawDelta = false;
   const started = new Promise((resolve, reject) => { resolveStarted = resolve; rejectStarted = reject; });
@@ -40,7 +40,7 @@ export function stream(origin, scenario = 'stream') {
     if (!sawDelta) rejectStarted(new Error('No mock stream delta'));
     resolveDone({ complete, received, firstAt, lastAt, sawDelta });
   };
-  req = http.request(origin + '/openai/v1/responses?case=' + scenario, { method: 'POST', headers: auth, agent: false }, res => {
+  req = http.request(origin + '/openai/v1/responses?case=' + scenario, { method: 'POST', headers, agent: false }, res => {
     response = res;
     res.setEncoding('utf8');
     res.on('data', chunk => {

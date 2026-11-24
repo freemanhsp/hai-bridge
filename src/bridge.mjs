@@ -51,6 +51,8 @@ function allowedMethod(pathname, providers) {
 }
 
 export function createBridge(options) {
+  if (options.authorize !== undefined && typeof options.authorize !== 'function') throw new Error('Invalid bridge authorization hook');
+  if (!options.authorize && typeof options.getBridgeToken !== 'function') throw new Error('Bridge requires an explicit authentication strategy');
   const upstreamOrigin = loopbackUrl(options.upstream?.href || options.upstream || 'http://127.0.0.1:6655');
   const providers = options.providers || ['openai'];
   const idleTimeoutMs = options.idleTimeoutMs || 120000;
@@ -75,9 +77,14 @@ export function createBridge(options) {
     handle().catch(() => sendError(res, 503, 'bridge_credentials_unavailable'));
 
     async function handle() {
-      const expectedToken = validateToken(await options.getBridgeToken());
-      const authorization = req.headers.authorization;
-      if (!authorization?.startsWith('Bearer ') || !tokenMatches(authorization.slice(7), expectedToken)) {
+      let authorized;
+      if (options.authorize) authorized = await options.authorize(req, res) === true;
+      else {
+        const expectedToken = validateToken(await options.getBridgeToken());
+        const authorization = req.headers.authorization;
+        authorized = authorization?.startsWith('Bearer ') && tokenMatches(authorization.slice(7), expectedToken);
+      }
+      if (!authorized) {
         res.setHeader('www-authenticate', 'Bearer');
         sendError(res, 401, 'bridge_unauthorized');
         return;

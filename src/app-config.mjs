@@ -55,7 +55,7 @@ function retryBudget(value) {
   if (!Number.isInteger(value) || value < 0 || value > 10) throw new Error('Application max_retries must be between 0 and 10');
   return value;
 }
-async function checkSshFiles(identityFile, knownHostsFile) {
+export async function checkSshFiles(identityFile, knownHostsFile) {
   for (const [file, privateKey] of [[identityFile, true], [knownHostsFile, false]]) {
     const info = await fs.stat(file);
     if (!info.isFile()) throw new Error('SSH identity and trust must be regular files');
@@ -133,9 +133,11 @@ export async function initializeApplicationClient(file = DEFAULT_APP_CLIENT_CONF
   }
 }
 
-export async function loadApplicationConfig(file, role) {
+// Pure schema/path normalization: safe to reuse without reading any credentials.
+export function normalizeApplicationConfig(raw, file, role) {
   if (!['publisher', 'client'].includes(role)) throw new Error('Invalid application role');
-  const configFile = path.resolve(file), raw = await readJson(configFile);
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid application configuration');
+  const configFile = path.resolve(file);
   const allowed = ['schema_version', 'transport', 'mode', 'role', 'ssh_target', 'ssh_port', 'identity_file',
     'known_hosts_file', 'relay_port', 'reconnect', 'max_retries', 'tls_dir',
     ...(role === 'publisher' ? ['app_port', ...(raw.mode === 'hai' ? ['upstream_url', 'upstream_auth_file'] : [])] : ['local_port', 'tunnel_port'])];
@@ -146,22 +148,17 @@ export async function loadApplicationConfig(file, role) {
   if (typeof raw.reconnect !== 'boolean') throw new Error('Application reconnect must be a boolean');
   const directory = path.dirname(configFile);
   const identityFile = sshFile(raw.identity_file, directory), knownHostsFile = sshFile(raw.known_hosts_file, directory);
-  await checkSshFiles(identityFile, knownHostsFile);
   if (typeof raw.tls_dir !== 'string' || !raw.tls_dir || /[\x00-\x1f]/.test(raw.tls_dir)) throw new Error('Invalid application TLS directory');
   const tlsDirectory = path.resolve(directory, raw.tls_dir);
-  // Certificates are validated for validity, pin, private-key match and use before any network side effect.
-  const pair = await loadPair(tlsDirectory, role === 'publisher' ? 'server' : 'client', { mode: raw.mode });
-  const access = raw.mode === 'hai' ? await loadApplicationAccess(tlsDirectory) : { token: DEV_TOKEN, model: 'relay-ok' };
-  const result = { role, transport: APPLICATION_TRANSPORT, mode: raw.mode, pair, tlsDirectory,
+  const result = { role, transport: APPLICATION_TRANSPORT, mode: raw.mode, tlsDirectory,
     target: endpoint(raw.ssh_target), sshPort: validatePort(raw.ssh_port, 'ssh_port'),
     identityFile, knownHostsFile, relayPort: applicationPort(raw.relay_port, 'relay_port'),
-    reconnect: raw.reconnect, maxRetries: retryBudget(raw.max_retries), ...access };
+    reconnect: raw.reconnect, maxRetries: retryBudget(raw.max_retries) };
   if (role === 'publisher') {
     result.appPort = applicationPort(raw.app_port, 'app_port');
     if (raw.mode === 'hai') {
       result.upstream = loopbackUrl(raw.upstream_url);
       result.authFile = sshFile(raw.upstream_auth_file, directory);
-      await readHaiKey(result.authFile);
     }
   }
   else {
@@ -172,7 +169,19 @@ export async function loadApplicationConfig(file, role) {
   return result;
 }
 
+export async function loadApplicationConfig(file, role) {
+  const raw = await readJson(path.resolve(file));
+  if (raw.transport === 'app-device') return (await import('./device-config.mjs')).loadDeviceConfig(file, role);
+  const result = normalizeApplicationConfig(raw, file, role);
+  await checkSshFiles(result.identityFile, result.knownHostsFile);
+  // Full runtime validation still reads private material and checks key-match before networking.
+  result.pair = await loadPair(result.tlsDirectory, role === 'publisher' ? 'server' : 'client', { mode: result.mode });
+  Object.assign(result, result.mode === 'hai' ? await loadApplicationAccess(result.tlsDirectory) : { token: DEV_TOKEN, model: 'relay-ok' });
+  if (result.authFile) await readHaiKey(result.authFile);
+  return result;
+}
+
 export async function loadToolClient(file, env = process.env) {
   const raw = await readJson(file);
-  return raw.transport === APPLICATION_TRANSPORT ? loadApplicationConfig(file, 'client') : loadClientConfig(file, env);
+  return [APPLICATION_TRANSPORT, 'app-device'].includes(raw.transport) ? loadApplicationConfig(file, 'client') : loadClientConfig(file, env);
 }

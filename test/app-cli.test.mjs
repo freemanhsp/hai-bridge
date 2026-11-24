@@ -83,6 +83,46 @@ function tcpSshHarness(targetPort, { fatal } = {}) {
   return { children, spawnProcess };
 }
 
+test('application startup/forward observer errors and service-close errors release handlers safely', { timeout: 3000 }, async () => {
+  const config = { ...await loadApplicationConfig(serverInfo.serverFile, 'publisher'), appPort: await unusedPort() };
+  for (const stage of ['onListening', 'forward_ready', 'close']) {
+    const signals = new EventEmitter(), events = [], kills = [];
+    let closed = 0, spawned = 0;
+    const task = runApplication(config, { signals, childStopOptions: { graceMs: 10, killMs: 10 },
+      startPublisher: async () => ({ port: config.appPort, async close() { closed++; if (stage === 'close') throw new Error('PRIVATE-CLOSE-ERROR'); } }),
+      onListening() { if (stage === 'onListening') throw new Error('PRIVATE-LISTEN-ERROR'); },
+      onEvent(event) { events.push(event); if (stage === 'forward_ready' && event.state === stage) return Promise.reject(new Error('PRIVATE-EVENT-ERROR')); },
+      spawnProcess() {
+        spawned++; const child = new EventEmitter(); child.pid = 999999; child.stderr = new EventEmitter();
+        child.kill = signal => { kills.push(signal); queueMicrotask(() => child.emit('close', 0)); return true; };
+        queueMicrotask(() => stage === 'close' ? signals.emit('SIGTERM') : child.stderr.emit('data', Buffer.from(
+          'debug1: remote forward success for: listen 127.0.0.1:' + config.relayPort + ', connect 127.0.0.1:' + config.appPort + '\n')));
+        return child;
+      } });
+    await assert.rejects(task, error => error.code === (stage === 'close' ? 'LOCAL_STOP_ERROR' : 'OBSERVER_ERROR') && !error.message.includes('PRIVATE-'));
+    assert.equal(closed, 1); assert.equal(spawned, stage === 'onListening' ? 0 : 1);
+    assert.deepEqual(kills, stage === 'onListening' ? [] : ['SIGTERM']);
+    assert.equal(signals.listenerCount('SIGINT'), 0); assert.equal(signals.listenerCount('SIGTERM'), 0);
+    assert.equal(JSON.stringify(events).includes('PRIVATE-'), false);
+    if (stage === 'close') assert.equal(events.at(-1).state, 'cleanup_failed');
+  }
+});
+
+test('application SSH timeout closes local service but never claims full cleanup', { timeout: 1000 }, async () => {
+  const config = await loadApplicationConfig(serverInfo.serverFile, 'publisher');
+  const signals = new EventEmitter(), events = [], child = new EventEmitter(), kills = []; let closed = false;
+  child.pid = 999999; child.stderr = new EventEmitter(); child.kill = signal => { kills.push(signal); return true; };
+  await assert.rejects(runApplication(config, { signals, childStopOptions: { graceMs: 10, killMs: 10 },
+    startPublisher: async () => ({ port: config.appPort, async close() { closed = true; } }),
+    onEvent: e => events.push(e), spawnProcess() { queueMicrotask(() => signals.emit('SIGINT')); return child; },
+  }), { code: 'SSH_STOP_TIMEOUT' });
+  assert.equal(closed, true); assert.deepEqual(kills, ['SIGTERM', 'SIGKILL']);
+  assert.equal(events.some(e => e.state === 'stopped'), false);
+  const final = events.at(-1); assert.equal(final.state, 'cleanup_failed'); assert.equal(final.local_service, 'stopped');
+  assert.equal(final.owned_ssh, 'not_confirmed'); assert.equal(final.remote_release, 'not_checked');
+  assert.equal(signals.listenerCount('SIGINT'), 0); child.emit('close', null);
+});
+
 test('versioned initialization exports only B identity and imports it without A SSH credentials', async () => {
   assert.deepEqual((await fs.readdir(serverInfo.clientDirectory)).sort(), ['ca.pem', 'client.key', 'client.pem', 'pair.json']);
   const { file, config } = await clientConfig('init');

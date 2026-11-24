@@ -1,6 +1,7 @@
 import tls from 'node:tls';
 import { setTimeout as pause } from 'node:timers/promises';
 import { clientTlsOptions } from './app-transport.mjs';
+import { deviceTlsOptions } from './device-identity.mjs';
 
 export async function applicationTlsReady(pair, port, signal) {
   if (signal?.aborted) return false;
@@ -10,7 +11,7 @@ export async function applicationTlsReady(pair, port, signal) {
     const done = value => { clearTimeout(timer); signal?.removeEventListener('abort', abort); socket?.destroy(); resolve(value); };
     try {
       signal?.addEventListener('abort', abort, { once: true });
-      socket = tls.connect({ ...clientTlsOptions(pair), host: '127.0.0.1', port }, () => done(socket.authorized));
+      socket = tls.connect({ ...(pair.trust ? deviceTlsOptions(pair.trust) : clientTlsOptions(pair)), host: '127.0.0.1', port }, () => done(socket.authorized));
       socket.once('error', () => done(false));
       timer = setTimeout(() => done(false), 800);
       if (signal?.aborted) done(false);

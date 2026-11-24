@@ -9,7 +9,7 @@ import { validatePort, writePrivateFile } from './config.mjs';
 
 export const DEFAULT_DEV_PORT = 18090;
 export const DEV_TOKEN = 'hai_bridge_public_dev_token_20261120';
-const DEV_KEY = 'public-dev-upstream-fixture-only';
+export const DEV_KEY = 'public-dev-upstream-fixture-only';
 
 async function listen(server, port) {
   server.listen(port, '127.0.0.1');

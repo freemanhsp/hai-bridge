@@ -49,7 +49,7 @@ test('pack allowlist rejects unexpected files and missing runtime entrypoints', 
   const required = ['package.json', 'README.md', 'bin/hai-bridge.mjs', 'src/version.mjs', 'src/dev.mjs'].map(path => ({ path }));
   validatePackedFiles(required);
   for (const path of ['.local/client.json', 'mydocs/note.md', 'explore/test.mjs', 'test/dev.test.mjs',
-    'scripts/pack.mjs', '.env', 'src/.secret.mjs', 'src/private.key', '../src/version.mjs']) {
+    'scripts/pack.mjs', 'bin/unknown.mjs', '.env', 'src/.secret.mjs', 'src/private.key', '../src/version.mjs']) {
     assert.throws(() => validatePackedFiles([...required, { path }]), /outside/);
   }
   assert.throws(() => validatePackedFiles(required.slice(1)), /missing/);
@@ -91,6 +91,8 @@ test('actual offline pack excludes private assets, supplies SHA-256 and preserve
   assert.equal(release.version, VERSION);
   assert.equal(release.node_required, '>=22');
   assert.ok(release.files.includes('src/bridge.mjs'));
+  for (const file of ['src/device-config.mjs', 'src/device-auth.mjs', 'src/device-transport.mjs', 'src/device-registry.mjs',
+    'src/device-identity.mjs', 'src/device-store.mjs', 'src/device-enrollment.mjs', 'src/device-checks.mjs']) assert.ok(release.files.includes(file));
   assert.equal(release.files.some(file => /^([.]|mydocs|test|explore|scripts)/.test(file)), false);
   const second = await buildRelease({ root: directory, outputRoot, npmCli });
   assert.notEqual(first.directory, second.directory);

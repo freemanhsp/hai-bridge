@@ -20,6 +20,11 @@ import { checkApplicationClient } from '../src/app-checks.mjs';
 import { tryHai } from '../src/hai-trial.mjs';
 import { setupClient, setupPublisher, defaultPublisherFile } from '../src/profiles.mjs';
 import { startSession } from '../src/session.mjs';
+import { inspectApplication, formatApplicationInspection } from '../src/app-inspect.mjs';
+import { initializeDevicePublisher, initializeDeviceClient } from '../src/device-config.mjs';
+import { issueInvitation, loadRegistry, changeDeviceState } from '../src/device-registry.mjs';
+import { enrollDevice } from '../src/device-enrollment.mjs';
+import { checkDeviceClient } from '../src/device-checks.mjs';
 
 const HELP = `HAI Bridge MVP — Node.js 22+
 
@@ -27,6 +32,18 @@ const HELP = `HAI Bridge MVP — Node.js 22+
   setup-client --client-config EXISTING_REAL_CLIENT [--profile-dir DIRECTORY]
   setup-publisher --server-config PATH [--profile-dir DIRECTORY]
   start        [--client-config PATH] [--profile-dir DIRECTORY] [--project DIRECTORY] -- [CODEX ARGS...]
+  init-device  (--mock | --hai --upstream-url URL --upstream-auth-file PATH --model MODEL)
+               --ssh-target USER@ECS --identity-file PATH --known-hosts-file PATH --out PRIVATE_DIRECTORY
+               [--app-port PORT] [--relay-port PORT] [--ssh-port PORT] [--max-retries N]
+  invite-device --server-config V2_PATH --out NEW_PRIVATE_INVITATION
+  init-device-client --invitation PRIVATE_FILE --label NAME [--model MODEL]
+               --ssh-target USER@ECS --identity-file PATH --known-hosts-file PATH --out NEW_PRIVATE_CONFIG
+               [--local-port PORT] [--tunnel-port PORT] [--relay-port PORT] [--ssh-port PORT] [--max-retries N]
+  enroll-device --client-config V2_PATH [--json] (one-time; owns temporary outbound SSH)
+  check-device --client-config APPROVED_V2_MOCK --out NEW_PRIVATE_REPORT [--json] (one B batch)
+  devices      --server-config V2_PATH [--json] (local A administration)
+  approve-device --server-config V2_PATH --device-id FULL_B_FINGERPRINT
+  revoke-device  --server-config V2_PATH --device-id FULL_B_FINGERPRINT
   init-app     (--mock | --hai --upstream-url URL --upstream-auth-file PATH --model MODEL)
                --ssh-target USER@ECS --identity-file PATH --known-hosts-file PATH
                [--out DIRECTORY] [--app-port PORT] [--relay-port PORT] [--ssh-port PORT] [--max-retries N]
@@ -34,6 +51,8 @@ const HELP = `HAI Bridge MVP — Node.js 22+
                   [--out PATH] [--local-port PORT] [--tunnel-port PORT] [--relay-port PORT] [--ssh-port PORT] [--max-retries N]
   publish-app  [--server-config PATH | --profile-dir DIRECTORY] [--json]
   connect-app  [--client-config PATH] [--json]
+  inspect-app  --role publisher|client [--server-config PATH | --client-config PATH | --profile-dir DIRECTORY]
+               [--json] [--out NEW_REPORT_PATH] (offline; no SSH/HTTP/HAI requests)
   check-app    --client-config PATH --out PATH [--interrupt-ssh] [--json]
   try-hai      --client-config PATH --out PATH [--infer] [--json] (owns B connection; --infer is billable)
   init-server  [--server-config PATH] [--upstream-url URL] [--upstream-auth-file PATH]
@@ -60,11 +79,15 @@ Default configuration paths are relative to your current working directory, not 
 publish/connect run in foreground; Ctrl-C stops only their own SSH child.
 Credentials are not printed. 'probe --infer' is billable with a real upstream; dev is synthetic.
 Offline doctor never connects to SSH/HAI or changes trust; it briefly checks local port binding.
+inspect-app checks application config/public certificate expiry and file metadata; private keys/HAI auth are not read.
 dev starts only local mock services (default port 18090); config is temporary unless --out is set.
 check-lifecycle is MOCK ONLY and owns its SSH; --interrupt-ssh intentionally stops that child to test recovery.
 Application TLS supports isolated --mock or explicit --hai; A/B use outbound ECS SSH, never Mac system login.
 check-app stays MOCK ONLY. --hai needs a new pairing and keeps all HAI credentials on A.
 Application init needs OpenSSL on A only. B imports a private short-lived TLS pairing; never upload its keys.
+V2 app-device: B generates its own long-lived key, A approves its fingerprint; no B client certificate.
+V2 invites expire in 15 minutes; transfer privately. A server leaf renews automatically; roots need explicit repair.
+V2 uses the same publish-app/connect-app/start commands, with an explicit new config; v1 is not migrated.
 setup-client copies a real B profile privately to ~/.hai-bridge; setup-publisher remembers only A's config path.
 Source checkout: npm run setup:publisher -- --server-config PATH (once), then npm run publish.
 publish-app stays in foreground; forward_ready confirms only the relay listener, not B-to-HAI health.
@@ -97,19 +120,83 @@ async function main() {
     'pairing-file': { type: 'string' },
     'pairing-dir': { type: 'string' }, 'app-port': { type: 'string' }, 'tunnel-port': { type: 'string' },
     'max-retries': { type: 'string' },
-    'profile-dir': { type: 'string' }, project: { type: 'string' },
+    'profile-dir': { type: 'string' }, project: { type: 'string' }, role: { type: 'string' },
+    invitation: { type: 'string' }, label: { type: 'string' }, 'device-id': { type: 'string' },
   } });
   if (!command || command === 'help' || command === '--help' || command === '-h' || values.help) {
     console.log(HELP); return;
   }
   if (positionals.length) throw new Error('Unexpected positional arguments; pass Codex arguments after --');
+  if (command === 'inspect-app') {
+    if (userArgs.length || Object.keys(values).some(key => !['role', 'server-config', 'client-config', 'profile-dir', 'json', 'out'].includes(key))
+        || !['publisher', 'client'].includes(values.role)
+        || (values.role === 'publisher' && values['client-config']) || (values.role === 'client' && values['server-config'])
+        || (values['profile-dir'] && (values['server-config'] || values['client-config']))) {
+      throw new Error('inspect-app requires --role publisher|client and matching config or profile-dir; online/inference/override options are not accepted');
+    }
+    const report = await inspectApplication({ role: values.role, file: values['server-config'] || values['client-config'],
+      profileDir: values['profile-dir'], out: values.out });
+    console.log(values.json ? JSON.stringify(report, null, 2) : formatApplicationInspection(report));
+    process.exitCode = report.status === 'fail' ? 1 : 0;
+    return;
+  }
+  if (values.role !== undefined) throw new Error('--role is only supported by inspect-app');
+  if (['init-device', 'init-device-client', 'invite-device', 'enroll-device', 'check-device', 'devices', 'approve-device', 'revoke-device'].includes(command)) {
+    const common = ['ssh-target', 'identity-file', 'known-hosts-file', 'out', 'relay-port', 'ssh-port', 'max-retries'];
+    const allowed = command === 'init-device' ? [...common, 'mock', 'hai', 'upstream-url', 'upstream-auth-file', 'model', 'app-port']
+      : command === 'init-device-client' ? [...common, 'invitation', 'label', 'model', 'local-port', 'tunnel-port']
+      : command === 'enroll-device' ? ['client-config', 'json'] : command === 'check-device' ? ['client-config', 'out', 'json'] : command === 'invite-device' ? ['server-config', 'out']
+      : command === 'devices' ? ['server-config', 'json'] : ['server-config', 'device-id'];
+    if (userArgs.length || Object.keys(values).some(key => !allowed.includes(key))) throw new Error('Unsupported device command options');
+    if (command.startsWith('init-device')) {
+      if (!values.out) throw new Error('Device init requires an explicit new private --out path');
+      const number = key => values[key] === undefined ? undefined : Number(values[key]);
+      const configOptions = { mock: values.mock, hai: values.hai, upstreamUrl: values['upstream-url'], upstreamAuthFile: values['upstream-auth-file'],
+        model: values.model, sshTarget: values['ssh-target'], identityFile: values['identity-file'], knownHostsFile: values['known-hosts-file'],
+        invitationFile: values.invitation, label: values.label, appPort: number('app-port'), localPort: number('local-port'),
+        tunnelPort: number('tunnel-port'), relayPort: number('relay-port'), sshPort: number('ssh-port'), maxRetries: number('max-retries') };
+      const result = command === 'init-device' ? await initializeDevicePublisher(values.out, configOptions)
+        : await initializeDeviceClient(values.out, configOptions);
+      console.log('Private v2 configuration: ' + (result.serverFile || result.clientFile));
+      if (result.device_id) console.log('B device fingerprint: ' + result.device_id + '; compare on A before approval.');
+      else console.log('Next: invite-device; existing v1 settings and services are unchanged.');
+    } else if (command === 'check-device') {
+      const result = await checkDeviceClient({ clientFile: values['client-config'], out: values.out }, {
+        onEvent: event => console.error(values.json ? JSON.stringify(event) : formatApplicationEvent(event)) });
+      console.log(values.json ? JSON.stringify(result.report, null, 2) : 'V2 MOCK checks: ' + result.report.status + '; report: ' + result.destination);
+      process.exitCode = result.report.status === 'pass' ? 0 : 1;
+    } else if (command === 'enroll-device') {
+      if (!values['client-config']) throw new Error('enroll-device requires an explicit --client-config');
+      const result = await enrollDevice(values['client-config'], { onEvent: event => console.error(values.json ? JSON.stringify(event) : formatApplicationEvent(event)) });
+      console.log(values.json ? JSON.stringify(result) : 'B device: ' + result.device_id + '; ' + result.state + '. Approve on A, then connect-app.');
+    } else {
+      if (!values['server-config']) throw new Error('Device administration requires an explicit --server-config');
+      const config = await loadApplicationConfig(values['server-config'], 'publisher');
+      if (config.transport !== 'app-device') throw new Error('Device administration requires an independent v2 publisher');
+      if (command === 'invite-device') {
+        if (!values.out) throw new Error('invite-device requires a new private --out file');
+        const result = await issueInvitation(config.deviceDirectory, values.out);
+        console.log('Private invitation: ' + result.file + '; expires in 15 minutes. Transfer privately; no B/HAI private key included.');
+      } else if (command === 'devices') {
+        const registry = await loadRegistry(config.deviceDirectory, config.pair.trust.instance_id);
+        const devices = registry.devices.map(({ device_id, label, state }) => ({ device_id, label, state }));
+        console.log(values.json ? JSON.stringify({ devices }, null, 2) : devices.map(item => item.device_id + '  ' + item.state + '  ' + item.label).join('\n') || 'No devices enrolled.');
+      } else {
+        const result = await changeDeviceState(config.deviceDirectory, config.pair.trust.instance_id, values['device-id'], command === 'approve-device' ? 'approved' : 'revoked');
+        console.log('Device ' + result.device_id + ': ' + result.state + ' saved.');
+        console.log('Running-service enforcement is checked per request; active streams are cancelled by polling (normally within 500ms). No service acknowledgement was requested.');
+      }
+    }
+    return;
+  }
+  if (['invitation', 'label', 'device-id'].some(key => values[key] !== undefined)) throw new Error('Device options require a device command');
   if (['setup-client', 'setup-publisher', 'start'].includes(command)) {
     const allowed = command === 'setup-client' ? ['client-config', 'profile-dir']
       : command === 'setup-publisher' ? ['server-config', 'profile-dir'] : ['client-config', 'profile-dir', 'project'];
     if (Object.keys(values).some(key => !allowed.includes(key)) || (command !== 'start' && userArgs.length)) throw new Error('Unsupported daily startup options');
     if (command === 'setup-client') {
       console.log('Private daily client: ' + await setupClient(values['client-config'], values['profile-dir']));
-      console.log('Run hai-bridge start from your project. Existing pairing expiry is unchanged; no HAI credentials were copied.');
+      console.log('Run hai-bridge start from your project. No HAI credentials were copied; v2 remembers this device key location, v1 retains pairing expiry.');
     } else if (command === 'setup-publisher') {
       console.log('Private publisher default: ' + await setupPublisher(values['server-config'], values['profile-dir']));
       console.log('配置路径已记住；日常启动：hai-bridge publish-app（源码目录：npm run publish）。');
@@ -275,9 +362,10 @@ async function main() {
   }
   if (!['connect', 'doctor', 'probe', 'codex'].includes(command)) throw new Error(`Unknown command: ${command}`);
   const config = await loadToolClient(clientFile);
-  if (config.transport === APPLICATION_TRANSPORT && command === 'connect') throw new Error('Application config requires connect-app');
-  if (config.transport === APPLICATION_TRANSPORT && command === 'codex' && config.mode !== 'hai') throw new Error('Real AI tool sessions require a dedicated --hai pairing, not mock');
-  if (config.transport === APPLICATION_TRANSPORT && values['base-url']) throw new Error('Application tools do not accept a base URL override');
+  const application = [APPLICATION_TRANSPORT, 'app-device'].includes(config.transport);
+  if (application && command === 'connect') throw new Error('Application config requires connect-app');
+  if (application && command === 'codex' && config.mode !== 'hai') throw new Error('Real AI tool sessions require a dedicated --hai pairing, not mock');
+  if (application && values['base-url']) throw new Error('Application tools do not accept a base URL override');
   const origin = clientOrigin(config, values['base-url']);
   if (command === 'connect') {
     if (config.localOnly) throw new Error('Local-only dev configuration does not use SSH; run doctor or probe directly');
@@ -289,14 +377,14 @@ async function main() {
     console.log(JSON.stringify(result, null, 2)); return;
   }
   if (command === 'probe') {
-    if (config.transport === APPLICATION_TRANSPORT) {
+    if (application) {
       const result = await diagnose(config, origin);
       if (result.mock !== (config.mode === 'mock') || !result.configured_model_available) throw new Error('Refusing POST: application upstream mode or model mismatch');
       if (config.mode === 'hai') console.error('BILLABLE: one short real HAI Responses request.');
     }
-    console.log(JSON.stringify(await probeInference(config, origin, values.model ?? (config.transport === APPLICATION_TRANSPORT ? config.model : undefined)), null, 2)); return;
+    console.log(JSON.stringify(await probeInference(config, origin, values.model ?? (application ? config.model : undefined)), null, 2)); return;
   }
-  if (config.transport === APPLICATION_TRANSPORT) {
+  if (application) {
     const result = await diagnose(config, origin);
     if (result.mock || !result.configured_model_available) throw new Error('Refusing Codex: real HAI model is not available');
     console.error('BILLABLE: Codex uses real HAI through A. Use only a non-sensitive test workspace for the first session.');

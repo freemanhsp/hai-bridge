@@ -92,10 +92,11 @@ export async function startHaiClient(pair, { tlsPort, port = 0, idleTimeoutMs = 
   return startApplicationClient(pair, { tlsPort, port, idleTimeoutMs, token });
 }
 
-async function startApplicationClient(pair, { tlsPort, port, idleTimeoutMs, token }) {
+export async function startApplicationClient(pair, { tlsPort, port, idleTimeoutMs, token,
+  security = clientTlsOptions(pair), getAuthorization = async () => 'Bearer ' + token,
+  allowRequest = () => true, onUnauthorized = () => {}, closeExtra = () => {} }) {
   validateToken(token);
   validatePort(tlsPort, 'TLS tunnel port');
-  const security = clientTlsOptions(pair);
   const outgoing = new Set();
   const server = http.createServer((req, res) => {
     if (!tokenMatches(req.headers.authorization, 'Bearer ' + token)) {
@@ -109,8 +110,18 @@ async function startApplicationClient(pair, { tlsPort, port, idleTimeoutMs, toke
       res.writeHead(400).end();
       return;
     }
+    if (!allowRequest(req)) { req.resume(); res.writeHead(404).end(); return; }
+    forward().catch(() => {
+      req.resume();
+      if (!res.destroyed && !res.headersSent) res.writeHead(503, { 'content-type': 'application/json' })
+        .end('{"error":{"code":"application_authentication_unavailable"}}');
+    });
+    async function forward() {
+    // Authenticate before sending bytes; never retry a data request after a 401/transport error.
+    const authorization = await getAuthorization();
+    if (res.destroyed || req.aborted) return;
     const headers = stripHeaders(req.headers);
-    headers.authorization = 'Bearer ' + token;
+    headers.authorization = authorization;
     headers.host = pair.server_name;
     let bytes = 0;
     const limiter = new Transform({ transform(chunk, encoding, callback) {
@@ -124,6 +135,7 @@ async function startApplicationClient(pair, { tlsPort, port, idleTimeoutMs, toke
     };
     const upstream = https.request({ ...security, hostname: '127.0.0.1', port: tlsPort,
       path: req.url, method: req.method, headers }, reply => {
+      if (reply.statusCode === 401) onUnauthorized(authorization);
       if (res.destroyed) { reply.destroy(); return; }
       res.writeHead(reply.statusCode, stripHeaders(reply.headers, true));
       res.flushHeaders();
@@ -143,11 +155,13 @@ async function startApplicationClient(pair, { tlsPort, port, idleTimeoutMs, toke
     req.on('error', cancel);
     res.on('close', () => { if (!res.writableFinished) cancel(); });
     req.pipe(limiter).pipe(upstream);
+    }
   });
   server.requestTimeout = idleTimeoutMs;
   server.headersTimeout = Math.min(60000, idleTimeoutMs);
   let closing;
   const close = () => closing ||= (async () => {
+    closeExtra();
     for (const req of outgoing) req.destroy();
     await closeServer(server);
   })();

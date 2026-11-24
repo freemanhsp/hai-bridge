@@ -79,6 +79,9 @@ test('actual offline pack excludes private assets, supplies SHA-256 and preserve
   const metadata = JSON.parse(await fs.readFile(path.join(directory, 'package.json'), 'utf8'));
   metadata.scripts.prepare = 'node -e "process.exit(91)"';
   await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify(metadata));
+  await assert.rejects(buildRelease({ root: directory, outputRoot, npmCli }), /Lifecycle scripts are not allowed/);
+  delete metadata.scripts.prepare;
+  await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify(metadata));
   const first = await buildRelease({ root: directory, outputRoot, npmCli });
   const bytes = await fs.readFile(first.archive);
   assert.equal(first.sha256, createHash('sha256').update(bytes).digest('hex'));
@@ -93,6 +96,18 @@ test('actual offline pack excludes private assets, supplies SHA-256 and preserve
   assert.notEqual(first.directory, second.directory);
   assert.deepEqual(await fs.readFile(first.archive), bytes);
   assert.equal(await fs.readFile(path.join(directory, '.local', 'client.json'), 'utf8'), 'SYNTHETIC-EXCLUDED-NEVER-SHIP');
+});
+
+test('all pack/install lifecycle hooks are refused before invoking even a missing npm CLI', async t => {
+  const directory = await sourceFixture(t), outputRoot = path.join(directory, '.local', 'artifacts');
+  const metadata = JSON.parse(await fs.readFile(path.join(directory, 'package.json'), 'utf8'));
+  for (const hook of ['prepare', 'prepack', 'postpack', 'prepublish', 'prepublishOnly',
+    'preinstall', 'install', 'postinstall']) {
+    await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify({ ...metadata,
+      scripts: { ...metadata.scripts, [hook]: 'node -e "process.exit(91)"' } }));
+    await assert.rejects(buildRelease({ root: directory, outputRoot, npmCli: path.join(directory, 'missing-npm.mjs') }), /Lifecycle scripts are not allowed/);
+    await assert.rejects(fs.access(outputRoot), { code: 'ENOENT' });
+  }
 });
 
 test('installed commands quote Node/entry/config paths for POSIX and PowerShell', () => {

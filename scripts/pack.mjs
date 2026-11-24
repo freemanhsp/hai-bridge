@@ -26,6 +26,13 @@ export async function buildRelease({ root = sourceRoot, outputRoot = path.join(r
   if (metadata.name !== 'hai-bridge' || metadata.private !== true || !/^\d+[.]\d+[.]\d+(?:-[A-Za-z0-9.-]+)?$/.test(metadata.version)) {
     throw new Error('Expected a private hai-bridge package with a valid version');
   }
+  // npm 10's directory pack path can run prepare even with --ignore-scripts.
+  // Refuse lifecycle hooks before invoking npm, rather than relying on that flag alone.
+  const lifecycle = ['prepare', 'prepack', 'postpack', 'prepublish', 'prepublishOnly',
+    'preinstall', 'install', 'postinstall'];
+  if (lifecycle.some(name => Object.hasOwn(metadata.scripts || {}, name))) {
+    throw new Error('Lifecycle scripts are not allowed in the runtime package; npm was not invoked');
+  }
   const cache = await fs.mkdtemp(path.join(os.tmpdir(), 'hai-bridge-pack-cache-'));
   try {
     const pack = async (extra = []) => {

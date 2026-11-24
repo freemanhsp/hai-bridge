@@ -15,7 +15,7 @@
     "pack": "node scripts/pack.mjs",
     "pack:app-checks": "node scripts/pack-app-checks.mjs",
     "pack:hai": "node scripts/pack-app-checks.mjs --hai",
-    "test": "node --test test/bridge.test.mjs test/config.test.mjs test/tunnel.test.mjs test/relay-config.test.mjs test/client.test.mjs test/preflight.test.mjs test/dev.test.mjs test/package.test.mjs test/lifecycle.test.mjs test/app-tls.test.mjs test/app-cli.test.mjs test/hai-app.test.mjs test/session.test.mjs test/app-inspect.test.mjs test/device.test.mjs",
+    "test": "node --test test/bridge.test.mjs test/config.test.mjs test/tunnel.test.mjs test/relay-config.test.mjs test/client.test.mjs test/preflight.test.mjs test/dev.test.mjs test/package.test.mjs test/lifecycle.test.mjs test/app-tls.test.mjs test/app-cli.test.mjs test/hai-app.test.mjs test/session.test.mjs test/app-inspect.test.mjs test/device.test.mjs test/device-acceptance.test.mjs",
     "check": "node --check bin/hai-bridge.mjs"
   }
 }
